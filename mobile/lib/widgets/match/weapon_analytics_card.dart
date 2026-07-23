@@ -86,6 +86,11 @@ class WeaponAnalyticsCard extends StatelessWidget {
               Icon(Icons.sports_esports, color: Colors.amber, size: 18),
             ],
           ),
+          const SizedBox(height: 2),
+          const Text(
+            'BASED ON RECENT 20 MATCHES HISTORY',
+            style: TextStyle(color: Colors.white38, fontWeight: FontWeight.w600, fontSize: 10, letterSpacing: 0.8),
+          ),
           const SizedBox(height: 14),
           ...topWeapons.map((entry) {
             final wUuid = entry.key;

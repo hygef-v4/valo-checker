@@ -61,6 +61,11 @@ class AgentStatsSummary extends StatelessWidget {
               Icon(Icons.stars, color: Color(0xFF34D399), size: 18),
             ],
           ),
+          const SizedBox(height: 2),
+          const Text(
+            'BASED ON RECENT 20 MATCHES HISTORY',
+            style: TextStyle(color: Colors.white38, fontWeight: FontWeight.w600, fontSize: 10, letterSpacing: 0.8),
+          ),
           const SizedBox(height: 14),
           ...sortedAgents.take(4).map((stat) {
             final name = stat['name'].toString();
