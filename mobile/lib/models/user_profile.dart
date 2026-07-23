@@ -17,8 +17,8 @@ class UserProfile {
     this.vp = 0,
     this.rad = 0,
     this.kc = 0,
-    this.accountLevel = 67,
-    this.cardIcon = 'https://media.valorant-api.com/playercards/9fb348bc-4141-423b-a63e-cbca722a4d09/displayicon.png',
+    this.accountLevel = 1,
+    this.cardIcon = '',
   });
 
   String get riotId => '$gameName#$tagLine';

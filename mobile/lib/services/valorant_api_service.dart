@@ -4,6 +4,7 @@ import '../models/skin_item.dart';
 import '../models/accessory_item.dart';
 
 class ValorantApiService {
+  static final Map<String, dynamic> _skinsFullCache = {};
   static final Map<String, dynamic> _skinLevelsCache = {};
   static final Map<String, dynamic> _contentTiersCache = {};
   static final Map<String, dynamic> _bundlesCache = {};
@@ -15,6 +16,7 @@ class ValorantApiService {
   static final Map<String, Map<String, String>> _agentsCache = {};
   static final Map<String, dynamic> _agentsRawCache = {};
   static final Map<String, Map<String, String>> _mapsCache = {};
+  static final Map<String, Map<String, String>> _weaponsCache = {};
   static bool _isLoaded = false;
 
   static Future<void> loadMetadataCache() async {
@@ -32,13 +34,15 @@ class ValorantApiService {
         http.get(Uri.parse('https://valorant-api.com/v1/competitivetiers')),
         http.get(Uri.parse('https://valorant-api.com/v1/agents?isPlayableCharacter=true')),
         http.get(Uri.parse('https://valorant-api.com/v1/maps')),
+        http.get(Uri.parse('https://valorant-api.com/v1/weapons/skins')),
+        http.get(Uri.parse('https://valorant-api.com/v1/weapons')),
       ]);
 
       void populate(http.Response res, Map<String, dynamic> targetMap) {
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body)['data'] as List;
           for (var item in data) {
-            targetMap[item['uuid']] = item;
+            targetMap[item['uuid'].toString().toLowerCase()] = item;
           }
         }
       }
@@ -95,8 +99,66 @@ class ValorantApiService {
         }
       }
 
+      // Populate Full Skins
+      if (responses[10].statusCode == 200) {
+        final skinsData = jsonDecode(responses[10].body)['data'] as List;
+        for (var skin in skinsData) {
+          final sUuid = (skin['uuid'] ?? '').toString().toLowerCase();
+          _skinsFullCache[sUuid] = skin;
+
+          final chromas = skin['chromas'] as List? ?? [];
+          for (var c in chromas) {
+            final cUuid = (c['uuid'] ?? '').toString().toLowerCase();
+            if (cUuid.isNotEmpty) {
+              _skinsFullCache[cUuid] = {
+                'displayName': c['displayName'] ?? skin['displayName'],
+                'displayIcon': c['displayIcon'] ?? c['fullRender'] ?? skin['displayIcon'],
+                'streamedVideo': c['streamedVideo'] ?? skin['levels']?[0]?['streamedVideo'],
+                'parentSkin': skin,
+              };
+            }
+          }
+
+          final levels = skin['levels'] as List? ?? [];
+          for (var l in levels) {
+            final lUuid = (l['uuid'] ?? '').toString().toLowerCase();
+            if (lUuid.isNotEmpty) {
+              _skinsFullCache[lUuid] = {
+                'displayName': l['displayName'] ?? skin['displayName'],
+                'displayIcon': l['displayIcon'] ?? skin['displayIcon'],
+                'streamedVideo': l['streamedVideo'] ?? skin['levels']?[0]?['streamedVideo'],
+                'parentSkin': skin,
+              };
+            }
+          }
+        }
+      }
+
+      // Populate Weapons
+      if (responses[11].statusCode == 200) {
+        final weaponsData = jsonDecode(responses[11].body)['data'] as List;
+        for (var w in weaponsData) {
+          final wUuid = (w['uuid'] ?? '').toString().toLowerCase();
+          _weaponsCache[wUuid] = {
+            'displayName': (w['displayName'] ?? 'Weapon').toString(),
+            'displayIcon': (w['killStreamIcon'] ?? w['displayIcon'] ?? '').toString(),
+          };
+        }
+      }
+
       _isLoaded = true;
     } catch (_) {}
+  }
+
+  static Map<String, String> resolveWeapon(String weaponUuid) {
+    final key = weaponUuid.toLowerCase();
+    if (_weaponsCache.containsKey(key)) {
+      return _weaponsCache[key]!;
+    }
+    return {
+      'displayName': 'Weapon',
+      'displayIcon': '',
+    };
   }
 
   static Map<String, String> resolveRankTier(int tier) {
@@ -107,6 +169,64 @@ class ValorantApiService {
       'tierName': 'Unrated',
       'largeIcon': 'https://media.valorant-api.com/competitivetiers/03621f52-342b-cf4e-4f86-9350a49c6d04/0/largeicon.png',
     };
+  }
+
+  static String getRankIconByName(String name) {
+    final lower = name.toLowerCase().trim();
+    int tier = 0;
+    if (lower.contains('iron 1')) {
+      tier = 3;
+    } else if (lower.contains('iron 2')) {
+      tier = 4;
+    } else if (lower.contains('iron 3') || lower.contains('iron')) {
+      tier = 5;
+    } else if (lower.contains('bronze 1')) {
+      tier = 6;
+    } else if (lower.contains('bronze 2')) {
+      tier = 7;
+    } else if (lower.contains('bronze 3') || lower.contains('bronze')) {
+      tier = 8;
+    } else if (lower.contains('silver 1')) {
+      tier = 9;
+    } else if (lower.contains('silver 2')) {
+      tier = 10;
+    } else if (lower.contains('silver 3') || lower.contains('silver')) {
+      tier = 11;
+    } else if (lower.contains('gold 1')) {
+      tier = 12;
+    } else if (lower.contains('gold 2')) {
+      tier = 13;
+    } else if (lower.contains('gold 3') || lower.contains('gold')) {
+      tier = 14;
+    } else if (lower.contains('plat') && lower.contains('1')) {
+      tier = 15;
+    } else if (lower.contains('plat') && lower.contains('2')) {
+      tier = 16;
+    } else if (lower.contains('plat')) {
+      tier = 17;
+    } else if (lower.contains('diamond') && lower.contains('1')) {
+      tier = 18;
+    } else if (lower.contains('diamond') && lower.contains('2')) {
+      tier = 19;
+    } else if (lower.contains('diamond')) {
+      tier = 20;
+    } else if (lower.contains('ascendant') && lower.contains('1')) {
+      tier = 21;
+    } else if (lower.contains('ascendant') && lower.contains('2')) {
+      tier = 22;
+    } else if (lower.contains('ascendant')) {
+      tier = 23;
+    } else if (lower.contains('immortal') && lower.contains('1')) {
+      tier = 24;
+    } else if (lower.contains('immortal') && lower.contains('2')) {
+      tier = 25;
+    } else if (lower.contains('immortal')) {
+      tier = 26;
+    } else if (lower.contains('radiant')) {
+      tier = 27;
+    }
+
+    return resolveRankTier(tier)['largeIcon'] ?? '';
   }
 
   static Map<String, String> resolveAgent(String agentUuid) {
@@ -138,9 +258,10 @@ class ValorantApiService {
   }
 
   static SkinItem resolveSkinItem(String itemUuid, int cost) {
-    final rawSkin = _skinLevelsCache[itemUuid];
+    final key = itemUuid.toLowerCase();
+    dynamic item = _skinsFullCache[key] ?? _skinLevelsCache[key];
 
-    if (rawSkin == null) {
+    if (item == null) {
       return SkinItem(
         uuid: itemUuid,
         displayName: 'Valorant Skin',
@@ -149,9 +270,13 @@ class ValorantApiService {
       );
     }
 
-    String name = (rawSkin['displayName'] ?? 'Valorant Skin').toString();
-    String icon = (rawSkin['displayIcon'] ?? '').toString();
-    String video = (rawSkin['streamedVideo'] ?? '').toString();
+    String name = (item['displayName'] ?? 'Valorant Skin').toString();
+    String icon = (item['displayIcon'] ?? item['fullRender'] ?? '').toString();
+    String video = (item['streamedVideo'] ?? '').toString();
+
+    if (icon.isEmpty && item['parentSkin'] != null) {
+      icon = (item['parentSkin']['displayIcon'] ?? '').toString();
+    }
 
     String clean = name
         .replaceAll(RegExp(r'\s+Level\s+\d+.*$', caseSensitive: false), '')
@@ -168,6 +293,25 @@ class ValorantApiService {
       videoUrl: video,
       cleanName: clean,
     );
+  }
+
+  static Map<String, dynamic>? getSkinFullData(String itemUuid) {
+    final key = itemUuid.toLowerCase();
+    final item = _skinsFullCache[key];
+    if (item != null) {
+      if (item['parentSkin'] != null) {
+        return item['parentSkin'] as Map<String, dynamic>;
+      }
+      if (item['chromas'] != null) {
+        return item as Map<String, dynamic>;
+      }
+    }
+    return null;
+  }
+
+  static Map<String, dynamic>? getAgentFullData(String agentUuid) {
+    final key = agentUuid.toLowerCase();
+    return _agentsRawCache[key];
   }
 
   static Map<String, String> resolveBundleMeta(String bundleUuid) {
@@ -223,8 +367,12 @@ class ValorantApiService {
 
   static List<Map<String, dynamic>> getPlayableAgentsList(Set<String> ownedAgentUuids) {
     List<Map<String, dynamic>> agentsList = [];
+    final lowerOwned = ownedAgentUuids.map((e) => e.toLowerCase()).toSet();
+
     _agentsRawCache.forEach((uuid, raw) {
-      final isOwned = ownedAgentUuids.contains(uuid);
+      final isBase = raw['isBaseContent'] == true;
+      final isOwned = isBase || lowerOwned.contains(uuid.toLowerCase());
+
       agentsList.add({
         'uuid': uuid,
         'displayName': (raw['displayName'] ?? 'Agent').toString(),
@@ -236,5 +384,18 @@ class ValorantApiService {
       });
     });
     return agentsList;
+  }
+
+  static String resolvePlayerCard(String cardUuid) {
+    final key = cardUuid.toLowerCase();
+    final item = _playerCardsCache[key];
+    if (item != null) {
+      final icon = (item['displayIcon'] ?? item['smallArt'] ?? item['largeArt'] ?? '').toString();
+      if (icon.isNotEmpty) return icon;
+    }
+    if (cardUuid.isNotEmpty) {
+      return 'https://media.valorant-api.com/playercards/$cardUuid/displayicon.png';
+    }
+    return '';
   }
 }

@@ -12,6 +12,7 @@ class MatchSummary {
   final int assists;
   final bool isMvp;
   final int matchStartTime;
+  final Map<String, dynamic>? rawMatchDetails;
 
   MatchSummary({
     required this.matchId,
@@ -27,5 +28,6 @@ class MatchSummary {
     required this.assists,
     required this.isMvp,
     required this.matchStartTime,
+    this.rawMatchDetails,
   });
 }

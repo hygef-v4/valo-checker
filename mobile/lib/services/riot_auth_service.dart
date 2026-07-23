@@ -16,15 +16,6 @@ class RiotAuthService {
   static const String clientPlatform =
       'ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY4Yml0IiwNCgkicGxhdGZvcm1CYXNlT1MiOiAiV2luZG93cyINCn0=';
 
-  // Default free starter agents for every Valorant account
-  static const Set<String> defaultStarterAgentUuids = {
-    '9f0d8ba9-4140-b941-57d3-a7ad57c6b417', // Brimstone
-    '5edd25e1-4db1-7048-5789-49c69317b966', // Jett
-    'eb933307-4108-9c1a-9623-8796b318626d', // Phoenix
-    '5644423b-4ebd-437b-a5c9-d57326b0572b', // Sage
-    'ded3520f-4ab6-9637-ea88-26a6db586a39', // Sova
-  };
-
   static Future<String> getEntitlements(String accessToken) async {
     final res = await http.post(
       Uri.parse('https://entitlements.auth.riotgames.com/api/token/v1'),
@@ -125,7 +116,7 @@ class RiotAuthService {
 
   static Future<Set<String>> fetchOwnedAgents(String accessToken, String entitlementToken, String puuid, String shard) async {
     final clientVersion = await getClientVersion();
-    Set<String> ownedAgentUuids = {...defaultStarterAgentUuids};
+    Set<String> ownedAgentUuids = {};
 
     // 1. Fetch entitlements
     try {
@@ -176,6 +167,53 @@ class RiotAuthService {
     } catch (_) {}
 
     return ownedAgentUuids;
+  }
+
+  static Future<String> fetchPlayerCard(String accessToken, String entitlementToken, String puuid, String shard) async {
+    final clientVersion = await getClientVersion();
+    try {
+      final res = await http.get(
+        Uri.parse('https://pd.$shard.a.pvp.net/personalization/v2/players/$puuid/playerloadout'),
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'X-Riot-Entitlements-JWT': entitlementToken,
+          'X-Riot-ClientVersion': clientVersion,
+          'X-Riot-ClientPlatform': clientPlatform,
+        },
+      );
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final cardUuid = (data['Identity']?['PlayerCardID'] ?? '').toString();
+        if (cardUuid.isNotEmpty) {
+          return ValorantApiService.resolvePlayerCard(cardUuid);
+        }
+      }
+    } catch (_) {}
+
+    return '';
+  }
+
+  static Future<int> fetchAccountLevel(String accessToken, String entitlementToken, String puuid, String shard) async {
+    final clientVersion = await getClientVersion();
+    try {
+      final res = await http.get(
+        Uri.parse('https://pd.$shard.a.pvp.net/account-xp/v1/players/$puuid'),
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'X-Riot-Entitlements-JWT': entitlementToken,
+          'X-Riot-ClientVersion': clientVersion,
+          'X-Riot-ClientPlatform': clientPlatform,
+        },
+      );
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final level = data['Progress']?['Level'] as int? ?? 1;
+        return level;
+      }
+    } catch (_) {}
+    return 1;
   }
 
   static Future<List<SkinItem>> fetchOwnedInventory(String accessToken, String entitlementToken, String puuid, String shard) async {
@@ -352,7 +390,7 @@ class RiotAuthService {
 
     try {
       final historyRes = await http.get(
-        Uri.parse('https://pd.$shard.a.pvp.net/match-history/v1/history/$puuid?startIndex=0&endIndex=5'),
+        Uri.parse('https://pd.$shard.a.pvp.net/match-history/v1/history/$puuid?startIndex=0&endIndex=20'),
         headers: {
           'Authorization': 'Bearer $accessToken',
           'X-Riot-Entitlements-JWT': entitlementToken,
@@ -364,7 +402,7 @@ class RiotAuthService {
       if (historyRes.statusCode == 200) {
         final historyData = jsonDecode(historyRes.body);
         final historyList = historyData['History'] as List? ?? [];
-        final recentMatches = historyList.take(5).toList();
+        final recentMatches = historyList.take(20).toList();
 
         final detailFutures = recentMatches.map((h) {
           final matchId = h['MatchID'] ?? '';
@@ -390,7 +428,9 @@ class RiotAuthService {
             final teams = detailData['teams'] as List? ?? [];
 
             final mapId = matchInfo?['mapId'] ?? '';
-            final mode = matchInfo?['gameMode'] ?? 'Competitive';
+            final queueId = (matchInfo?['queueID'] ?? '').toString();
+            final rawMode = (matchInfo?['gameMode'] ?? 'Competitive').toString();
+            final modeStr = queueId.isNotEmpty ? queueId : rawMode.split('/').last;
             final gameStartTime = matchInfo?['gameStartMillis'] ?? 0;
 
             final playerObj = players.firstWhere(
@@ -437,7 +477,7 @@ class RiotAuthService {
                 mapIcon: mapMeta['splash']!,
                 agentName: agentMeta['displayName']!,
                 agentIcon: agentMeta['displayIcon']!,
-                gameMode: mode.toString().split('/').last,
+                gameMode: modeStr,
                 isVictory: isWon,
                 scoreText: '$roundsWon - $roundsLost',
                 kills: kills,
@@ -445,6 +485,7 @@ class RiotAuthService {
                 assists: assists,
                 isMvp: isMvp,
                 matchStartTime: gameStartTime,
+                rawMatchDetails: detailData as Map<String, dynamic>?,
               ));
             }
           }
@@ -560,6 +601,8 @@ class RiotAuthService {
       fetchMatchHistory(accessToken, entitlementToken, puuid, activeShard),
       fetchQuestsAndBattlePass(accessToken, entitlementToken, puuid, activeShard),
       fetchOwnedAgents(accessToken, entitlementToken, puuid, activeShard),
+      fetchPlayerCard(accessToken, entitlementToken, puuid, activeShard),
+      fetchAccountLevel(accessToken, entitlementToken, puuid, activeShard),
     ]);
 
     final wallet = results[0] as Map<String, int>;
@@ -568,6 +611,8 @@ class RiotAuthService {
     final matchHistory = results[3] as List<MatchSummary>;
     final quests = results[4] as List<QuestItem>;
     final ownedAgents = results[5] as Set<String>;
+    final cardIcon = results[6] as String;
+    final accountLevel = results[7] as int;
 
     final storeData = jsonDecode(storeRes.body);
 
@@ -689,6 +734,8 @@ class RiotAuthService {
       vp: wallet['vp'] ?? 0,
       rad: wallet['rad'] ?? 0,
       kc: wallet['kc'] ?? 0,
+      accountLevel: accountLevel,
+      cardIcon: cardIcon,
     );
 
     return {
@@ -704,5 +751,59 @@ class RiotAuthService {
       'quests': quests,
       'ownedAgents': ownedAgents,
     };
+  }
+
+  static Future<Map<String, dynamic>?> fetchMatchDetails(
+      String accessToken, String entitlementToken, String puuid, String shard, String matchId) async {
+    final clientVersion = await getClientVersion();
+    try {
+      final res = await http.get(
+        Uri.parse('https://pd.$shard.a.pvp.net/match-details/v1/matches/$matchId'),
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'X-Riot-Entitlements-JWT': entitlementToken,
+          'X-Riot-ClientVersion': clientVersion,
+          'X-Riot-ClientPlatform': clientPlatform,
+        },
+      );
+
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<Map<String, String>> fetchPlayerNames(
+      String accessToken, String entitlementToken, String shard, List<String> puuids) async {
+    final clientVersion = await getClientVersion();
+    try {
+      final res = await http.put(
+        Uri.parse('https://pd.$shard.a.pvp.net/name-service/v2/players'),
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'X-Riot-Entitlements-JWT': entitlementToken,
+          'X-Riot-ClientVersion': clientVersion,
+          'X-Riot-ClientPlatform': clientPlatform,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(puuids),
+      );
+
+      if (res.statusCode == 200) {
+        final List<dynamic> list = jsonDecode(res.body);
+        final Map<String, String> namesMap = {};
+        for (var item in list) {
+          final subject = item['Subject'] as String?;
+          final gameName = item['GameName'] as String?;
+          final tagLine = item['TagLine'] as String?;
+          if (subject != null && gameName != null && gameName.isNotEmpty) {
+            namesMap[subject] = tagLine != null && tagLine.isNotEmpty ? '$gameName#$tagLine' : gameName;
+          }
+        }
+        return namesMap;
+      }
+    } catch (_) {}
+    return {};
   }
 }
