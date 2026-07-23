@@ -439,21 +439,50 @@ class RiotAuthService {
         if (puuidSet.isNotEmpty) {
           try {
             final url = Uri.parse('https://pd.$shard.a.pvp.net/name-service/v2/players');
-            final nameRes = await http.put(
+            var nameRes = await http.put(
               url,
               headers: {
                 'Authorization': 'Bearer $accessToken',
                 'X-Riot-Entitlements-JWT': entitlementToken,
+                'X-Riot-ClientVersion': clientVersion,
+                'X-Riot-ClientPlatform': clientPlatform,
                 'Content-Type': 'application/json',
               },
               body: jsonEncode(puuidSet.toList()),
             );
+
+            if (nameRes.statusCode != 200) {
+              nameRes = await http.post(
+                url,
+                headers: {
+                  'Authorization': 'Bearer $accessToken',
+                  'X-Riot-Entitlements-JWT': entitlementToken,
+                  'X-Riot-ClientVersion': clientVersion,
+                  'X-Riot-ClientPlatform': clientPlatform,
+                  'Content-Type': 'application/json',
+                },
+                body: jsonEncode(puuidSet.toList()),
+              );
+            }
+
             if (nameRes.statusCode == 200) {
               final List nameList = jsonDecode(nameRes.body);
               for (var item in nameList) {
-                final sub = (item['Subject'] ?? item['subject'] ?? '').toString();
-                final gName = (item['GameName'] ?? item['gameName'] ?? '').toString();
-                final tLine = (item['TagLine'] ?? item['tagLine'] ?? '').toString();
+                final sub = (item['Subject'] ?? item['subject'] ?? item['puuid'] ?? '').toString();
+                String gName = (item['GameName'] ?? item['gameName'] ?? '').toString();
+                String tLine = (item['TagLine'] ?? item['tagLine'] ?? '').toString();
+
+                if (gName.isEmpty && item['DisplayName'] != null) {
+                  final dn = item['DisplayName'].toString();
+                  if (dn.contains('#')) {
+                    final parts = dn.split('#');
+                    gName = parts[0];
+                    tLine = parts.sublist(1).join('#');
+                  } else {
+                    gName = dn;
+                  }
+                }
+
                 if (sub.isNotEmpty && gName.isNotEmpty) {
                   resolvedNames[sub] = {
                     'gameName': gName,
