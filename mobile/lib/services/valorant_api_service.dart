@@ -150,6 +150,28 @@ class ValorantApiService {
     } catch (_) {}
   }
 
+  static final List<Map<String, String>> officialValorantWeapons = [
+    {'name': 'Melee', 'category': 'MELEE', 'icon': 'https://media.valorant-api.com/weaponskins/00c0b968-45db-953e-561b-9694119d84c1/displayicon.png'},
+    {'name': 'Classic', 'category': 'SIDEARMS', 'icon': 'https://media.valorant-api.com/weaponskins/e3760023-484e-2660-9a7d-f1a407736777/displayicon.png'},
+    {'name': 'Shorty', 'category': 'SIDEARMS', 'icon': 'https://media.valorant-api.com/weaponskins/4be08d51-4f9e-4e4b-482f-2d9370da0e30/displayicon.png'},
+    {'name': 'Frenzy', 'category': 'SIDEARMS', 'icon': 'https://media.valorant-api.com/weaponskins/5e533e4f-4d37-e544-7067-178b665df070/displayicon.png'},
+    {'name': 'Ghost', 'category': 'SIDEARMS', 'icon': 'https://media.valorant-api.com/weaponskins/0545f061-4682-6f9a-0e99-4d924d55050f/displayicon.png'},
+    {'name': 'Sheriff', 'category': 'SIDEARMS', 'icon': 'https://media.valorant-api.com/weaponskins/5df3297a-4c28-97e3-0d35-3b99912759e6/displayicon.png'},
+    {'name': 'Stinger', 'category': 'SMGS', 'icon': 'https://media.valorant-api.com/weaponskins/14b3d325-4122-8d7d-5a82-f5b24479e0a0/displayicon.png'},
+    {'name': 'Spectre', 'category': 'SMGS', 'icon': 'https://media.valorant-api.com/weaponskins/bb6e7465-4f7f-6819-bf93-9c86a60e0a58/displayicon.png'},
+    {'name': 'Bucky', 'category': 'SHOTGUNS', 'icon': 'https://media.valorant-api.com/weaponskins/67eb9548-466d-eb10-f1c5-cb810c978008/displayicon.png'},
+    {'name': 'Judge', 'category': 'SHOTGUNS', 'icon': 'https://media.valorant-api.com/weaponskins/75ce7cfa-468e-28cb-b0f3-ea9f0fb576ef/displayicon.png'},
+    {'name': 'Bulldog', 'category': 'RIFLES', 'icon': 'https://media.valorant-api.com/weaponskins/ffb233a7-47d0-1e5b-b9f3-b78809c7eb4e/displayicon.png'},
+    {'name': 'Guardian', 'category': 'RIFLES', 'icon': 'https://media.valorant-api.com/weaponskins/140236a9-4674-325b-be13-909d9a0d89e5/displayicon.png'},
+    {'name': 'Phantom', 'category': 'RIFLES', 'icon': 'https://media.valorant-api.com/weaponskins/83141f3e-4b47-1960-d667-bb8909180738/displayicon.png'},
+    {'name': 'Vandal', 'category': 'RIFLES', 'icon': 'https://media.valorant-api.com/weaponskins/9c83332a-4503-99c3-8177-dce0c0445e72/displayicon.png'},
+    {'name': 'Marshal', 'category': 'SNIPERS', 'icon': 'https://media.valorant-api.com/weaponskins/8ab7d75b-432d-2051-512c-9a888c3a10ee/displayicon.png'},
+    {'name': 'Outlaw', 'category': 'SNIPERS', 'icon': 'https://media.valorant-api.com/weaponskins/50627063-4696-8408-7715-d2a333363f4f/displayicon.png'},
+    {'name': 'Operator', 'category': 'SNIPERS', 'icon': 'https://media.valorant-api.com/weaponskins/a03b24d3-4319-996d-0f8c-94bbfba1dfc7/displayicon.png'},
+    {'name': 'Ares', 'category': 'HEAVY', 'icon': 'https://media.valorant-api.com/weaponskins/9d18c94e-4f24-6447-1845-a99f36f98f6d/displayicon.png'},
+    {'name': 'Odin', 'category': 'HEAVY', 'icon': 'https://media.valorant-api.com/weaponskins/e0dfb720-410a-20fa-fa9d-1ba672bf6246/displayicon.png'},
+  ];
+
   static Map<String, String> resolveWeapon(String weaponUuid) {
     final key = weaponUuid.toLowerCase();
     if (_weaponsCache.containsKey(key)) {

@@ -30,13 +30,13 @@ class MatchRoundsTab extends StatelessWidget {
 
         final resStr = (r['roundResult'] ?? '').toString();
         String condition = 'Elimination ⚔️';
-        if (resStr == 'TargetBomb' || resStr == 'BombPlanted') {
+        if (resStr == 'TargetBomb' || resStr == 'BombPlanted' || resStr == 'BombDetonated' || resStr == 'TargetDetonated') {
           final site = (r['plantSite'] ?? '').toString();
           condition = site.isNotEmpty ? 'Site $site Spike Detonated 💥' : 'Spike Detonated 💥';
         } else if (resStr == 'BombDefused') {
           final site = (r['plantSite'] ?? '').toString();
           condition = site.isNotEmpty ? 'Site $site Spike Defused 💣' : 'Spike Defused 💣';
-        } else if (resStr == 'TimeOut') {
+        } else if (resStr == 'TimeOut' || resStr == 'TIME_EXPIRED') {
           condition = 'Time Expired ⏰';
         } else if (resStr == 'Surrendered') {
           condition = 'Surrendered 🏳️';
@@ -78,38 +78,29 @@ class MatchRoundsTab extends StatelessWidget {
                 border: Border.all(color: isWin ? const Color(0xFF34D399).withValues(alpha: 0.3) : const Color(0xFFFF4655).withValues(alpha: 0.3)),
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: isWin ? const Color(0xFF34D399) : const Color(0xFFFF4655),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: Text(
-                            '${r['round']}',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10),
-                          ),
-                        ),
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: isWin ? const Color(0xFF34D399) : const Color(0xFFFF4655),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${r['round']}',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10),
                       ),
-                      const SizedBox(width: 10),
-                      Text(
-                        isWin ? 'ROUND WON' : 'ROUND LOST',
-                        style: TextStyle(
-                          color: isWin ? const Color(0xFF34D399) : const Color(0xFFFF4655),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
+                  const SizedBox(width: 10),
                   Text(
-                    r['condition'].toString(),
-                    style: const TextStyle(color: Colors.white70, fontSize: 11),
+                    isWin ? 'ROUND WON' : 'ROUND LOST',
+                    style: TextStyle(
+                      color: isWin ? const Color(0xFF34D399) : const Color(0xFFFF4655),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),

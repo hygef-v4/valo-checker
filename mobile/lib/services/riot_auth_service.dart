@@ -702,9 +702,15 @@ class RiotAuthService {
 
     final storeData = jsonDecode(storeRes.body);
 
+    int parseSeconds(dynamic val, int defaultVal) {
+      if (val is num) return val.toInt();
+      if (val != null) return int.tryParse(val.toString()) ?? defaultVal;
+      return defaultVal;
+    }
+
     // 1. Parse Single Item Offers (Daily Shop 4 skins)
     final singleItemOffers = storeData['SkinsPanelLayout']?['SingleItemStoreOffers'] as List? ?? [];
-    final singleItemRemainingSeconds = storeData['SkinsPanelLayout']?['SingleItemOffersRemainingDurationInSeconds'] ?? 86400;
+    final singleItemRemainingSeconds = parseSeconds(storeData['SkinsPanelLayout']?['SingleItemOffersRemainingDurationInSeconds'], 43200);
 
     List<SkinItem> dailySkins = [];
     for (var offer in singleItemOffers) {
@@ -724,6 +730,7 @@ class RiotAuthService {
     // 2. Parse Night Market (Bonus Store)
     List<Map<String, dynamic>> nightMarketSkins = [];
     final bonusStore = storeData['BonusStore'];
+    final bonusStoreRemainingSeconds = parseSeconds(bonusStore?['BonusStoreOffersRemainingDurationInSeconds'], 518400);
     if (bonusStore != null && bonusStore['BonusStoreOffers'] != null) {
       final offers = bonusStore['BonusStoreOffers'] as List;
       for (var offer in offers) {
@@ -793,6 +800,7 @@ class RiotAuthService {
     // 4. Parse Accessory Store (Kingdom Credits)
     List<AccessoryItem> accessoryItems = [];
     final accessoryStore = storeData['AccessoryStore'];
+    final accessoryStoreRemainingSeconds = parseSeconds(accessoryStore?['AccessoryStoreRemainingDurationInSeconds'], 432000);
     if (accessoryStore != null && accessoryStore['AccessoryStoreOffers'] != null) {
       final accOffers = accessoryStore['AccessoryStoreOffers'] as List;
       for (var offer in accOffers) {
@@ -828,6 +836,8 @@ class RiotAuthService {
       'profile': profile,
       'dailySkins': dailySkins,
       'remainingSeconds': singleItemRemainingSeconds,
+      'nightMarketRemainingSeconds': bonusStoreRemainingSeconds,
+      'accessoryRemainingSeconds': accessoryStoreRemainingSeconds,
       'nightMarket': nightMarketSkins,
       'bundles': bundles,
       'accessories': accessoryItems,

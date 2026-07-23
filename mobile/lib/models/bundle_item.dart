@@ -5,7 +5,7 @@ class BundleItem {
   final String displayName;
   final String displayIcon;
   final int cost;
-  final int remainingSeconds;
+  int remainingSeconds;
   final List<SkinItem> items;
 
   BundleItem({
