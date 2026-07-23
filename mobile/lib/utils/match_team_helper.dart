@@ -83,9 +83,12 @@ class MatchTeamHelper {
         final roundsPlayed = (stats?['roundsPlayed'] ?? (roundResults.isNotEmpty ? roundResults.length : 1)) as int;
         final acs = (roundsPlayed > 0) ? (score ~/ roundsPlayed) : score;
 
-        final tier = (p['competitiveTier'] ?? 0) as int;
+        int tier = (p['competitiveTier'] ?? 0) as int;
         final rankMeta = ValorantApiService.resolveRankTier(tier);
-        final rankName = rankMeta['tierName']!;
+        String rankName = rankMeta['tierName']!;
+        if (tier == 0 && sub == profile?.puuid && rankInfo != null && rankInfo.currentTierName.isNotEmpty) {
+          rankName = rankInfo.currentTierName;
+        }
 
         final gameName = (p['gameName'] ?? p['GameName'] ?? '').toString();
         final tagLine = (p['tagLine'] ?? p['TagLine'] ?? '').toString();
