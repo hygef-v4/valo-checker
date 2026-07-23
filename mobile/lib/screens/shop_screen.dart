@@ -579,14 +579,17 @@ class _ShopScreenState extends State<ShopScreen> {
               ),
               const SizedBox(width: 8),
               // Currency Balances Pill Bar
-              Row(
-                children: [
-                  _buildCurrencyPill('https://media.valorant-api.com/currencies/85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741/displayicon.png', '${_profile?.vp ?? 0}'),
-                  const SizedBox(width: 6),
-                  _buildCurrencyPill('https://media.valorant-api.com/currencies/e59aa87c-4cbf-517a-5983-6e81511be9b7/displayicon.png', '${_profile?.rad ?? 0}'),
-                  const SizedBox(width: 6),
-                  _buildCurrencyPill('https://media.valorant-api.com/currencies/85ca954a-41f2-ce94-9b45-8ca3dd39a00d/displayicon.png', '${_profile?.kc ?? 0}'),
-                ],
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildCurrencyPill('https://media.valorant-api.com/currencies/85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741/displayicon.png', '${_profile?.vp ?? 0}'),
+                    const SizedBox(width: 4),
+                    _buildCurrencyPill('https://media.valorant-api.com/currencies/e59aa87c-4cbf-517a-5983-6e81511be9b7/displayicon.png', '${_profile?.rad ?? 0}'),
+                    const SizedBox(width: 4),
+                    _buildCurrencyPill('https://media.valorant-api.com/currencies/85ca954a-41f2-ce94-9b45-8ca3dd39a00d/displayicon.png', '${_profile?.kc ?? 0}'),
+                  ],
+                ),
               ),
             ],
           ),
@@ -1520,7 +1523,10 @@ class _ShopScreenState extends State<ShopScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 6,
+                            runSpacing: 4,
                             children: [
                               Text(
                                 m.isVictory ? 'VICTORY (${m.scoreText})' : 'DEFEAT (${m.scoreText})',
@@ -1530,7 +1536,6 @@ class _ShopScreenState extends State<ShopScreen> {
                                   fontSize: 14,
                                 ),
                               ),
-                              const SizedBox(width: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
