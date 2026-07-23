@@ -1212,9 +1212,12 @@ class _ShopScreenState extends State<ShopScreen> {
         final rankMeta = ValorantApiService.resolveRankTier(tier);
         final rankName = rankMeta['tierName']!;
 
-        final gameName = (p['gameName'] ?? '').toString();
-        final tagLine = (p['tagLine'] ?? '').toString();
-        final displayName = (gameName.isNotEmpty) ? '$gameName#$tagLine' : 'Agent Player';
+        final gameName = (p['gameName'] ?? p['GameName'] ?? '').toString();
+        final tagLine = (p['tagLine'] ?? p['TagLine'] ?? '').toString();
+        final agentName = agentMeta['displayName'] ?? 'Agent';
+        final displayName = (gameName.isNotEmpty)
+            ? (tagLine.isNotEmpty ? '$gameName#$tagLine' : gameName)
+            : agentName;
 
         final hHits = hsMap[sub] ?? 0;
         final bHits = bsMap[sub] ?? 0;

@@ -420,12 +420,65 @@ class RiotAuthService {
 
         final responses = await Future.wait(detailFutures);
 
+        // Batch resolve player PUUIDs via Riot Name Service
+        final Set<String> puuidSet = {};
+        for (var matchRes in responses) {
+          if (matchRes != null && matchRes.statusCode == 200) {
+            try {
+              final detailData = jsonDecode(matchRes.body);
+              final players = detailData['players'] as List? ?? [];
+              for (var p in players) {
+                final s = (p['subject'] ?? '').toString();
+                if (s.isNotEmpty) puuidSet.add(s);
+              }
+            } catch (_) {}
+          }
+        }
+
+        final Map<String, Map<String, String>> resolvedNames = {};
+        if (puuidSet.isNotEmpty) {
+          try {
+            final url = Uri.parse('https://pd.$shard.a.pvp.net/name-service/v2/players');
+            final nameRes = await http.put(
+              url,
+              headers: {
+                'Authorization': 'Bearer $accessToken',
+                'X-Riot-Entitlements-JWT': entitlementToken,
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode(puuidSet.toList()),
+            );
+            if (nameRes.statusCode == 200) {
+              final List nameList = jsonDecode(nameRes.body);
+              for (var item in nameList) {
+                final sub = (item['Subject'] ?? item['subject'] ?? '').toString();
+                final gName = (item['GameName'] ?? item['gameName'] ?? '').toString();
+                final tLine = (item['TagLine'] ?? item['tagLine'] ?? '').toString();
+                if (sub.isNotEmpty && gName.isNotEmpty) {
+                  resolvedNames[sub] = {
+                    'gameName': gName,
+                    'tagLine': tLine,
+                  };
+                }
+              }
+            }
+          } catch (_) {}
+        }
+
         for (var matchRes in responses) {
           if (matchRes != null && matchRes.statusCode == 200) {
             final detailData = jsonDecode(matchRes.body);
             final matchInfo = detailData['matchInfo'];
             final players = detailData['players'] as List? ?? [];
             final teams = detailData['teams'] as List? ?? [];
+
+            for (var p in players) {
+              final sub = (p['subject'] ?? '').toString();
+              if (resolvedNames.containsKey(sub)) {
+                p['gameName'] = resolvedNames[sub]!['gameName'];
+                p['tagLine'] = resolvedNames[sub]!['tagLine'];
+              }
+            }
 
             final mapId = matchInfo?['mapId'] ?? '';
             final queueId = (matchInfo?['queueID'] ?? '').toString();
