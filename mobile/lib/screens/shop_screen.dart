@@ -911,6 +911,7 @@ class _ShopScreenState extends State<ShopScreen> {
               final skin = item['skin'] as SkinItem;
               final original = item['originalCost'] as int? ?? 1775;
               final discount = item['discountPercent'] as int? ?? 37;
+              final isOwned = _inventory.any((inv) => inv.uuid == skin.uuid || (inv.parentName.isNotEmpty && inv.parentName == skin.parentName));
 
               return InkWell(
                 onTap: () => _showSkinDetailModal(skin),
@@ -933,65 +934,75 @@ class _ShopScreenState extends State<ShopScreen> {
                               fontSize: 18,
                             ),
                           ),
-                          Text(
-                            'SPECTRE',
-                            style: const TextStyle(
-                              color: Colors.white38,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11,
-                            ),
-                          ),
                           const Spacer(),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '$original',
-                                    style: const TextStyle(
-                                      color: Colors.redAccent,
-                                      fontSize: 12,
-                                      decoration: TextDecoration.lineThrough,
-                                      decorationColor: Colors.redAccent,
+                              if (isOwned || skin.cost == 0)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF34D399).withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    'OWNED',
+                                    style: TextStyle(
+                                      color: Color(0xFF34D399),
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 13,
                                     ),
                                   ),
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.monetization_on_outlined, color: Colors.white, size: 16),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        '${skin.cost}',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 15,
-                                        ),
+                                )
+                              else
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '$original VP',
+                                      style: const TextStyle(
+                                        color: Colors.redAccent,
+                                        fontSize: 12,
+                                        decoration: TextDecoration.lineThrough,
+                                        decorationColor: Colors.redAccent,
                                       ),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                                    ),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.monetization_on_outlined, color: Colors.white, size: 16),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          '${skin.cost} VP',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               if (skin.displayIcon.isNotEmpty)
                                 CachedNetworkImage(imageUrl: skin.displayIcon, height: 75, fit: BoxFit.contain),
                             ],
                           ),
                         ],
                       ),
-                      Positioned(
-                        top: 0,
-                        right: 0,
-                        child: Text(
-                          '-$discount%',
-                          style: const TextStyle(
-                            color: Colors.redAccent,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
+                      if (!isOwned && skin.cost > 0)
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: Text(
+                            '-$discount%',
+                            style: const TextStyle(
+                              color: Colors.redAccent,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -1754,6 +1765,7 @@ class _ShopScreenState extends State<ShopScreen> {
 
   Widget _buildCleanSkinCard(SkinItem skin) {
     final isWishlisted = _wishlistUuids.contains(skin.uuid);
+    final isOwned = _inventory.any((inv) => inv.uuid == skin.uuid || (inv.parentName.isNotEmpty && inv.parentName == skin.parentName));
 
     return InkWell(
       onTap: () => _showSkinDetailModal(skin),
@@ -1783,20 +1795,37 @@ class _ShopScreenState extends State<ShopScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(Icons.monetization_on_outlined, color: Colors.white70, size: 12),
-                    const SizedBox(width: 2),
-                    Text(
-                      '${skin.cost}',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
+                if (isOwned || skin.cost == 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF34D399).withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'OWNED',
+                      style: TextStyle(
+                        color: Color(0xFF34D399),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 10,
                       ),
                     ),
-                  ],
-                ),
+                  )
+                else
+                  Row(
+                    children: [
+                      const Icon(Icons.monetization_on_outlined, color: Colors.white70, size: 12),
+                      const SizedBox(width: 2),
+                      Text(
+                        '${skin.cost}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
                 const Spacer(),
                 if (skin.displayIcon.isNotEmpty)
                   Center(
