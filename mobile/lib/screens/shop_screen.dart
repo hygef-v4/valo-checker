@@ -10,7 +10,12 @@ import '../models/match_summary.dart';
 import '../models/quest_item.dart';
 import '../services/riot_auth_service.dart';
 import '../services/valorant_api_service.dart';
+import '../services/wishlist_service.dart';
+import '../services/local_cache_service.dart';
+import '../widgets/common/shimmer_loading_skeleton.dart';
 import '../widgets/match/match_details_modal.dart';
+import '../widgets/match/weapon_analytics_card.dart';
+import '../widgets/profile/agent_stats_summary.dart';
 import '../widgets/shop/skin_detail_modal.dart';
 import '../utils/match_team_helper.dart';
 import 'riot_login_webview.dart';
@@ -40,10 +45,31 @@ class _ShopScreenState extends State<ShopScreen> {
   List<MatchSummary> _matchHistory = [];
   List<QuestItem> _quests = [];
   Set<String> _ownedAgents = {};
+  Set<String> _wishlistUuids = {};
   int _selectedAgentIndex = 0;
 
   int _remainingSeconds = 0;
   Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWishlist();
+  }
+
+  Future<void> _loadWishlist() async {
+    final set = await WishlistService.getWishlist();
+    if (mounted) {
+      setState(() {
+        _wishlistUuids = set;
+      });
+    }
+  }
+
+  Future<void> _toggleWishlist(String uuid) async {
+    await WishlistService.toggleWishlist(uuid);
+    await _loadWishlist();
+  }
 
   void _startCountdown() {
     _timer?.cancel();
@@ -101,6 +127,13 @@ class _ShopScreenState extends State<ShopScreen> {
         _remainingSeconds = data['remainingSeconds'] as int;
       });
       _startCountdown();
+      if (_profile != null) {
+        LocalCacheService.saveProfile({
+          'gameName': _profile!.gameName,
+          'tagLine': _profile!.tagLine,
+          'puuid': _profile!.puuid,
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -359,43 +392,47 @@ class _ShopScreenState extends State<ShopScreen> {
 
   Widget _buildLoginState() {
     if (_isLoading) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 70,
-                height: 70,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFF4655).withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const CircularProgressIndicator(
-                  color: Color(0xFFFF4655),
-                  strokeWidth: 3,
-                ),
+      return Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 70,
+              height: 70,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF4655).withValues(alpha: 0.15),
+                shape: BoxShape.circle,
               ),
-              const SizedBox(height: 24),
-              const Text(
-                'RIOT AUTHENTICATION SUCCESS',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 16,
-                  letterSpacing: 1.2,
-                ),
+              child: const CircularProgressIndicator(
+                color: Color(0xFFFF4655),
+                strokeWidth: 3,
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Fetching Storefront, Career Rank & Collection data...',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white60, fontSize: 13),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'AUTHENTICATING WITH RIOT GAMES',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 15,
+                letterSpacing: 1.2,
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Fetching Daily Store, Career Rank & Match Details...',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white60, fontSize: 13),
+            ),
+            const SizedBox(height: 32),
+            const ShimmerLoadingSkeleton(height: 50, borderRadius: 12),
+            const SizedBox(height: 12),
+            const ShimmerLoadingSkeleton(height: 100, borderRadius: 16),
+            const SizedBox(height: 12),
+            const ShimmerLoadingSkeleton(height: 100, borderRadius: 16),
+          ],
         ),
       );
     }
@@ -1403,6 +1440,10 @@ class _ShopScreenState extends State<ShopScreen> {
             ),
           ),
         const SizedBox(height: 24),
+        AgentStatsSummary(matchHistory: _matchHistory),
+        const SizedBox(height: 16),
+        WeaponAnalyticsCard(matchHistory: _matchHistory, userPuuid: _profile?.puuid ?? ''),
+        const SizedBox(height: 24),
         const Text(
           'ACTIVE QUESTS & BATTLEPASS',
           style: TextStyle(
@@ -1718,6 +1759,8 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   Widget _buildCleanSkinCard(SkinItem skin) {
+    final isWishlisted = _wishlistUuids.contains(skin.uuid);
+
     return InkWell(
       onTap: () => _showSkinDetailModal(skin),
       child: Container(
@@ -1725,46 +1768,66 @@ class _ShopScreenState extends State<ShopScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFF1B1B26),
           borderRadius: BorderRadius.circular(16),
+          border: isWishlisted ? Border.all(color: const Color(0xFFFF4655), width: 1.5) : null,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Stack(
           children: [
-            Text(
-              skin.parentName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Row(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.monetization_on_outlined, color: Colors.white70, size: 12),
-                const SizedBox(width: 2),
-                Text(
-                  '${skin.cost}',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
+                Padding(
+                  padding: const EdgeInsets.only(right: 24),
+                  child: Text(
+                    skin.parentName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(Icons.monetization_on_outlined, color: Colors.white70, size: 12),
+                    const SizedBox(width: 2),
+                    Text(
+                      '${skin.cost}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                if (skin.displayIcon.isNotEmpty)
+                  Center(
+                    child: CachedNetworkImage(
+                      imageUrl: skin.displayIcon,
+                      height: 60,
+                      fit: BoxFit.contain,
+                    ),
+                  )
+                else
+                  const Center(child: Icon(Icons.shield, color: Colors.white24, size: 40)),
               ],
             ),
-            const Spacer(),
-            if (skin.displayIcon.isNotEmpty)
-              Center(
-                child: CachedNetworkImage(
-                  imageUrl: skin.displayIcon,
-                  height: 60,
-                  fit: BoxFit.contain,
+            Positioned(
+              top: -8,
+              right: -8,
+              child: IconButton(
+                icon: Icon(
+                  isWishlisted ? Icons.favorite : Icons.favorite_border,
+                  color: isWishlisted ? const Color(0xFFFF4655) : Colors.white38,
+                  size: 18,
                 ),
-              )
-            else
-              const Center(child: Icon(Icons.shield, color: Colors.white24, size: 40)),
+                onPressed: () => _toggleWishlist(skin.uuid),
+              ),
+            ),
           ],
         ),
       ),
