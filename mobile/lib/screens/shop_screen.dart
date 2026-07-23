@@ -14,8 +14,6 @@ import '../services/wishlist_service.dart';
 import '../services/local_cache_service.dart';
 import '../widgets/common/shimmer_loading_skeleton.dart';
 import '../widgets/match/match_details_modal.dart';
-import '../widgets/match/weapon_analytics_card.dart';
-import '../widgets/profile/agent_stats_summary.dart';
 import '../widgets/shop/skin_detail_modal.dart';
 import '../utils/match_team_helper.dart';
 import 'riot_login_webview.dart';
@@ -1439,10 +1437,6 @@ class _ShopScreenState extends State<ShopScreen> {
               ],
             ),
           ),
-        const SizedBox(height: 24),
-        AgentStatsSummary(matchHistory: _matchHistory),
-        const SizedBox(height: 16),
-        WeaponAnalyticsCard(matchHistory: _matchHistory, userPuuid: _profile?.puuid ?? ''),
         const SizedBox(height: 24),
         const Text(
           'ACTIVE QUESTS & BATTLEPASS',
