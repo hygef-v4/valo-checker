@@ -581,9 +581,9 @@ class _ShopScreenState extends State<ShopScreen> {
               // Currency Balances Pill Bar
               Row(
                 children: [
-                  _buildCurrencyPill('https://media.valorant-api.com/currencies/85ad13f7-3d1b-da12-a0a0-4e907616386c/displayicon.png', '${_profile?.vp ?? 0}'),
+                  _buildCurrencyPill('https://media.valorant-api.com/currencies/85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741/displayicon.png', '${_profile?.vp ?? 0}'),
                   const SizedBox(width: 6),
-                  _buildCurrencyPill('https://media.valorant-api.com/currencies/e59aa87c-4c57-90ab-d663-2a4895203a25/displayicon.png', '${_profile?.rad ?? 0}'),
+                  _buildCurrencyPill('https://media.valorant-api.com/currencies/e59aa87c-4cbf-517a-5983-6e81511be9b7/displayicon.png', '${_profile?.rad ?? 0}'),
                   const SizedBox(width: 6),
                   _buildCurrencyPill('https://media.valorant-api.com/currencies/85ca954a-41f2-ce94-9b45-8ca3dd39a00d/displayicon.png', '${_profile?.kc ?? 0}'),
                 ],

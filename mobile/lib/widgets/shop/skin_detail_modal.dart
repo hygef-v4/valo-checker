@@ -273,7 +273,7 @@ class _SkinDetailModalState extends State<SkinDetailModal> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 CachedNetworkImage(
-                  imageUrl: 'https://media.valorant-api.com/currencies/85ad13f7-3d1b-da12-a0a0-4e907616386c/displayicon.png',
+                  imageUrl: 'https://media.valorant-api.com/currencies/85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741/displayicon.png',
                   width: 18,
                   height: 18,
                   errorWidget: (context, url, error) => const Icon(Icons.monetization_on_outlined, color: Colors.white70, size: 16),
