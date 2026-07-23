@@ -10,9 +10,9 @@ import '../models/quest_item.dart';
 import 'valorant_api_service.dart';
 
 class RiotAuthService {
-  static const String vpUuid = '85ad13f7-3d1b-da12-a0a0-4e907616386c';
+  static const String vpUuid = '85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741';
   static const String kcUuid = '85ca954a-41f2-ce94-9b45-8ca3dd39a00d';
-  static const String radUuid = 'e59aa87c-4c57-90ab-d663-2a4895203a25';
+  static const String radUuid = 'e59aa87c-4cbf-517a-5983-6e81511be9b7';
   static const String clientPlatform =
       'ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY4Yml0IiwNCgkicGxhdGZvcm1CYXNlT1MiOiAiV2luZG93cyINCn0=';
 
@@ -104,9 +104,9 @@ class RiotAuthService {
         final data = jsonDecode(res.body);
         final balances = data['Balances'] as Map<String, dynamic>?;
         if (balances != null) {
-          vp = balances[vpUuid] ?? balances['85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741'] ?? 0;
-          rad = balances[radUuid] ?? 0;
-          kc = balances[kcUuid] ?? balances['85ca954a-41f2-ce94-9b45-8ca3dd39a00d'] ?? 0;
+          vp = (balances['85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741'] ?? balances['85ad13f7-3d1b-da12-a0a0-4e907616386c'] ?? balances[vpUuid] ?? 0) as int;
+          rad = (balances['e59aa87c-4cbf-517a-5983-6e81511be9b7'] ?? balances['e59aa87c-4c57-90ab-d663-2a4895203a25'] ?? balances[radUuid] ?? 0) as int;
+          kc = (balances['85ca954a-41f2-ce94-9b45-8ca3dd39a00d'] ?? balances[kcUuid] ?? 0) as int;
         }
       }
     } catch (_) {}
