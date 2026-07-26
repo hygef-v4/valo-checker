@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/match_summary.dart';
 import '../../services/valorant_api_service.dart';
+import '../common/data_unavailable.dart';
 
 class MatchScoreboardTab extends StatelessWidget {
   final MatchSummary match;
@@ -18,6 +19,12 @@ class MatchScoreboardTab extends StatelessWidget {
     final isWin = match.isVictory;
     final teamA = teams['teamA'] ?? [];
     final teamB = teams['teamB'] ?? [];
+
+    if (teamA.isEmpty && teamB.isEmpty) {
+      return const DataUnavailable(
+        message: 'Scoreboard data is unavailable for this match.',
+      );
+    }
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,

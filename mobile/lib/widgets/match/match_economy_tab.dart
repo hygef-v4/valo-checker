@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/match_summary.dart';
+import '../../utils/json_utils.dart';
+import '../common/data_unavailable.dart';
 
 class MatchEconomyTab extends StatelessWidget {
   final MatchSummary match;
@@ -23,7 +25,7 @@ class MatchEconomyTab extends StatelessWidget {
     if (match.rawMatchDetails != null) {
       final roundResults = match.rawMatchDetails!['roundResults'] as List? ?? [];
       final rawPlayers = match.rawMatchDetails!['players'] as List? ?? [];
-      final myPlayerObj = rawPlayers.firstWhere((p) => p['subject'] == userPuuid, orElse: () => null);
+      final myPlayerObj = firstWhereOrNull(rawPlayers, (p) => p['subject'] == userPuuid);
       final myTeamId = myPlayerObj?['teamId'] ?? 'Blue';
 
       for (var r in roundResults) {
@@ -50,13 +52,18 @@ class MatchEconomyTab extends StatelessWidget {
       }
     }
 
-    final avgLoadoutVal = loadoutRounds > 0 ? (totalLoadout ~/ loadoutRounds) : 3850;
-    final ecoWinPctStr = ecoTotal > 0 ? '${((ecoWins / ecoTotal) * 100).toStringAsFixed(0)}%' : '40%';
-    final fullBuyWinPctStr = fullBuyTotal > 0 ? '${((fullBuyWins / fullBuyTotal) * 100).toStringAsFixed(0)}%' : '67%';
-    final spendPerKill = match.kills > 0 ? (totalLoadout ~/ match.kills) : (avgLoadoutVal);
-    final efficiencyText = (loadoutRounds > 0)
-        ? 'Spend Efficiency: \$$spendPerKill per kill. Calculated across all played rounds.'
-        : 'Spend Efficiency: High (\$1,250 per kill). Excellent economy management across round buys.';
+    if (loadoutRounds == 0) {
+      return const DataUnavailable(
+        message: 'Economy data is unavailable for this match.',
+      );
+    }
+
+    final avgLoadoutVal = totalLoadout ~/ loadoutRounds;
+    final ecoWinPctStr = ecoTotal > 0 ? '${((ecoWins / ecoTotal) * 100).toStringAsFixed(0)}%' : '—';
+    final fullBuyWinPctStr = fullBuyTotal > 0 ? '${((fullBuyWins / fullBuyTotal) * 100).toStringAsFixed(0)}%' : '—';
+    final efficiencyText = match.kills > 0
+        ? 'Spend Efficiency: \$${totalLoadout ~/ match.kills} per kill. Calculated across all played rounds.'
+        : 'Spend Efficiency: no kills recorded this match.';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

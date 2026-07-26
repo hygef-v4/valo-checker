@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import 'screens/shop_screen.dart';
+import 'theme/app_colors.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,13 +15,13 @@ class ValoCheckApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ValoCheck Mobile',
+      title: 'ValoCheck',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF0F1923),
+        scaffoldBackgroundColor: AppColors.background,
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFFFF4655),
-          surface: Color(0xFF1F2B37),
+          primary: AppColors.primary,
+          surface: AppColors.surface,
         ),
         textTheme: GoogleFonts.interTextTheme(
           ThemeData.dark().textTheme,

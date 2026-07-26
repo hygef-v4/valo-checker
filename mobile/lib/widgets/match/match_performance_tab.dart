@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/match_summary.dart';
+import '../common/data_unavailable.dart';
 
 class MatchPerformanceTab extends StatelessWidget {
   final MatchSummary match;
@@ -13,6 +14,12 @@ class MatchPerformanceTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (match.rawMatchDetails == null) {
+      return const DataUnavailable(
+        message: 'Performance data is unavailable for this match.',
+      );
+    }
+
     int hsCount = 0;
     int bsCount = 0;
     int lsCount = 0;
@@ -22,7 +29,7 @@ class MatchPerformanceTab extends StatelessWidget {
     int kastRounds = 0;
     int totalRounds = 0;
 
-    if (match.rawMatchDetails != null) {
+    {
       final roundResults = match.rawMatchDetails!['roundResults'] as List? ?? [];
       totalRounds = roundResults.length;
 
@@ -102,9 +109,9 @@ class MatchPerformanceTab extends StatelessWidget {
     }
 
     final totalHits = hsCount + bsCount + lsCount;
-    final hsPct = totalHits > 0 ? hsCount / totalHits : 0.18;
-    final bsPct = totalHits > 0 ? bsCount / totalHits : 0.68;
-    final lsPct = totalHits > 0 ? lsCount / totalHits : 0.14;
+    final hsPct = totalHits > 0 ? hsCount / totalHits : 0.0;
+    final bsPct = totalHits > 0 ? bsCount / totalHits : 0.0;
+    final lsPct = totalHits > 0 ? lsCount / totalHits : 0.0;
 
     final hsStr = '${(hsPct * 100).toStringAsFixed(0)}%';
     final bsStr = '${(bsPct * 100).toStringAsFixed(0)}%';
@@ -112,10 +119,10 @@ class MatchPerformanceTab extends StatelessWidget {
 
     final kastStr = (totalRounds > 0)
         ? '${((kastRounds / totalRounds) * 100).toStringAsFixed(0)}%'
-        : '81%';
+        : '—';
 
-    final fkStr = (match.rawMatchDetails != null) ? '$fkCount FK' : '3 FK';
-    final mkStr = (match.rawMatchDetails != null) ? '$mkCount Rounds' : '1x 3K • 2x 2K';
+    final fkStr = '$fkCount FK';
+    final mkStr = '$mkCount Rounds';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

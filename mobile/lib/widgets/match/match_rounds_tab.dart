@@ -1,6 +1,7 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../models/match_summary.dart';
+import '../../utils/json_utils.dart';
+import '../common/data_unavailable.dart';
 
 class MatchRoundsTab extends StatelessWidget {
   final MatchSummary match;
@@ -19,7 +20,7 @@ class MatchRoundsTab extends StatelessWidget {
     if (match.rawMatchDetails != null) {
       final roundResults = match.rawMatchDetails!['roundResults'] as List? ?? [];
       final rawPlayers = match.rawMatchDetails!['players'] as List? ?? [];
-      final myPlayerObj = rawPlayers.firstWhere((p) => p['subject'] == userPuuid, orElse: () => null);
+      final myPlayerObj = firstWhereOrNull(rawPlayers, (p) => p['subject'] == userPuuid);
       final myTeamId = myPlayerObj?['teamId'] ?? 'Blue';
 
       for (int i = 0; i < roundResults.length; i++) {
@@ -47,14 +48,9 @@ class MatchRoundsTab extends StatelessWidget {
     }
 
     if (rounds.isEmpty) {
-      final rand = Random(match.matchId.hashCode);
-      rounds = List.generate(21, (index) {
-        final rNum = index + 1;
-        final isWin = rand.nextBool();
-        final condType = rand.nextInt(3);
-        final winCondition = (condType == 0) ? 'Spike Detonated 💥' : ((condType == 1) ? 'Spike Defused 💣' : 'Elimination ⚔️');
-        return {'round': rNum, 'isWin': isWin, 'condition': winCondition};
-      });
+      return const DataUnavailable(
+        message: 'Round-by-round data is unavailable for this match.',
+      );
     }
 
     return Column(

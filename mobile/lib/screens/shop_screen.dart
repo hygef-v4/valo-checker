@@ -1,21 +1,34 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import '../models/user_profile.dart';
-import '../models/skin_item.dart';
-import '../models/bundle_item.dart';
+
 import '../models/accessory_item.dart';
-import '../models/rank_info.dart';
+import '../models/bundle_item.dart';
 import '../models/match_summary.dart';
 import '../models/quest_item.dart';
-import '../services/riot_auth_service.dart';
-import '../services/valorant_api_service.dart';
+import '../models/rank_info.dart';
+import '../models/skin_item.dart';
+import '../models/user_profile.dart';
 import '../services/local_cache_service.dart';
-import '../widgets/common/shimmer_loading_skeleton.dart';
-import '../widgets/match/match_details_modal.dart';
-import '../widgets/shop/skin_detail_modal.dart';
+import '../services/riot_api_client.dart';
+import '../services/riot_auth_service.dart';
+import '../theme/app_colors.dart';
 import '../utils/match_team_helper.dart';
+import '../widgets/accounts/accounts_tab.dart';
+import '../widgets/common/shimmer_loading_skeleton.dart';
+import '../widgets/common/sub_tab_bar.dart';
+import '../widgets/common/top_header.dart';
+import '../widgets/match/match_details_modal.dart';
+import '../widgets/profile/agents_tab.dart';
+import '../widgets/profile/career_tab.dart';
+import '../widgets/profile/collection_tab.dart';
+import '../widgets/shop/accessory_shop_tab.dart';
+import '../widgets/shop/bundles_tab.dart';
+import '../widgets/shop/daily_shop_tab.dart';
+import '../widgets/shop/night_market_tab.dart';
+import '../widgets/shop/shop_shared.dart';
+import '../widgets/shop/skin_detail_modal.dart';
 import 'riot_login_webview.dart';
 
 class ShopScreen extends StatefulWidget {
@@ -26,20 +39,17 @@ class ShopScreen extends StatefulWidget {
 }
 
 class _ShopScreenState extends State<ShopScreen> {
+  static const _shopSubTabs = ['DAILY SHOP', 'ACCESSORY SHOP', 'NIGHT MARKET', 'BUNDLES'];
+  static const _profileSubTabs = ['COLLECTION', 'AGENTS', 'CAREER'];
+
   int _currentNavIndex = 0; // 0: Shop, 1: Profile, 2: Accounts
-  int _shopSubTab = 0; // 0: Daily Shop, 1: Accessory Shop, 2: Night Market, 3: Bundles
-  int _profileSubTab = 0; // 0: Collection, 1: Agents, 2: Career/Rank
+  int _shopSubTab = 0;
+  int _profileSubTab = 0;
 
   bool _isLoading = false;
   String? _error;
   String? _accessToken;
   String? _idToken;
-
-  Future<void> _onRefresh() async {
-    if (_accessToken != null && _idToken != null) {
-      await _loadStoreData(_accessToken!, _idToken!);
-    }
-  }
 
   UserProfile? _profile;
   List<SkinItem> _dailySkins = [];
@@ -47,6 +57,7 @@ class _ShopScreenState extends State<ShopScreen> {
   List<BundleItem> _bundles = [];
   List<AccessoryItem> _accessories = [];
   List<SkinItem> _inventory = [];
+  OwnedSkinIndex _ownedIndex = OwnedSkinIndex.fromInventory(const []);
   RankInfo? _rankInfo;
   List<MatchSummary> _matchHistory = [];
   List<QuestItem> _quests = [];
@@ -58,38 +69,31 @@ class _ShopScreenState extends State<ShopScreen> {
   int _accessoryRemainingSeconds = 0;
   Timer? _timer;
 
-  void _startCountdown() {
+  @override
+  void initState() {
+    super.initState();
+    _checkSavedTokenAndAutoLogin();
+  }
+
+  @override
+  void dispose() {
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        setState(() {
-          if (_remainingSeconds > 0) _remainingSeconds--;
-          if (_nightMarketRemainingSeconds > 0) _nightMarketRemainingSeconds--;
-          if (_accessoryRemainingSeconds > 0) _accessoryRemainingSeconds--;
-          for (var b in _bundles) {
-            if (b.remainingSeconds > 0) {
-              b.remainingSeconds--;
-            }
-          }
-        });
-      }
-    });
+    super.dispose();
   }
 
-  String _formatTimer(int totalSeconds) {
-    final hours = (totalSeconds ~/ 3600).toString().padLeft(2, '0');
-    final minutes = ((totalSeconds % 3600) ~/ 60).toString().padLeft(2, '0');
-    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
-    return '$hours:$minutes:$seconds';
+  Future<void> _checkSavedTokenAndAutoLogin() async {
+    final tokens = await LocalCacheService.getValidTokens();
+    if (tokens != null && tokens['accessToken']!.isNotEmpty) {
+      _loadStoreData(tokens['accessToken']!, tokens['idToken'] ?? '');
+    }
   }
 
-  String _formatLongTimer(int totalSeconds) {
-    if (totalSeconds <= 0) return '00:00:00:00';
-    final days = (totalSeconds ~/ 86400).toString().padLeft(2, '0');
-    final hours = ((totalSeconds % 86400) ~/ 3600).toString().padLeft(2, '0');
-    final minutes = ((totalSeconds % 3600) ~/ 60).toString().padLeft(2, '0');
-    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
-    return '$days:$hours:$minutes:$seconds';
+  Future<void> _onRefresh() async {
+    if (_accessToken != null && _idToken != null) {
+      await _loadStoreData(_accessToken!, _idToken!);
+    } else {
+      await _checkSavedTokenAndAutoLogin();
+    }
   }
 
   Future<void> _handleLogin() async {
@@ -102,24 +106,26 @@ class _ShopScreenState extends State<ShopScreen> {
     }
   }
 
+  Future<void> _handleSwitchAccount() async {
+    final result = await Navigator.of(context).push<Map<String, String>>(
+      MaterialPageRoute(builder: (context) => const RiotLoginWebview(clearSession: true)),
+    );
+
+    if (result != null && result.containsKey('accessToken')) {
+      _loadStoreData(result['accessToken']!, result['idToken'] ?? '');
+    }
+  }
+
   Future<void> _handleLogout() async {
     try {
       final cookieManager = WebViewCookieManager();
       await cookieManager.clearCookies();
     } catch (_) {}
+    await LocalCacheService.clearTokens();
 
     if (!mounted) return;
     setState(() {
-      _profile = null;
-      _dailySkins.clear();
-      _nightMarketSkins.clear();
-      _bundles.clear();
-      _accessories.clear();
-      _inventory.clear();
-      _matchHistory.clear();
-      _quests.clear();
-      _ownedAgents.clear();
-      _rankInfo = null;
+      _clearAllData();
       _currentNavIndex = 0;
     });
 
@@ -127,25 +133,25 @@ class _ShopScreenState extends State<ShopScreen> {
       const SnackBar(
         content: Text('Logged out successfully.'),
         duration: Duration(seconds: 2),
-        backgroundColor: Color(0xFFFF4655),
+        backgroundColor: AppColors.primary,
       ),
     );
   }
 
-  Future<void> _handleAddAccount() async {
-    try {
-      final cookieManager = WebViewCookieManager();
-      await cookieManager.clearCookies();
-    } catch (_) {}
-
-    if (!mounted) return;
-    final result = await Navigator.of(context).push<Map<String, String>>(
-      MaterialPageRoute(builder: (context) => const RiotLoginWebview()),
-    );
-
-    if (result != null && result.containsKey('accessToken')) {
-      _loadStoreData(result['accessToken']!, result['idToken'] ?? '');
-    }
+  void _clearAllData() {
+    _profile = null;
+    _accessToken = null;
+    _idToken = null;
+    _dailySkins = [];
+    _nightMarketSkins = [];
+    _bundles = [];
+    _accessories = [];
+    _inventory = [];
+    _ownedIndex = OwnedSkinIndex.fromInventory(const []);
+    _matchHistory = [];
+    _quests = [];
+    _ownedAgents = {};
+    _rankInfo = null;
   }
 
   Future<void> _loadStoreData(String accessToken, String idToken) async {
@@ -160,22 +166,25 @@ class _ShopScreenState extends State<ShopScreen> {
     try {
       final data = await RiotAuthService.fetchStorefrontData(accessToken, idToken);
       if (!mounted) return;
+      final inventory = data['inventory'] as List<SkinItem>;
       setState(() {
         _profile = data['profile'] as UserProfile;
         _dailySkins = data['dailySkins'] as List<SkinItem>;
         _nightMarketSkins = data['nightMarket'] as List<Map<String, dynamic>>;
         _bundles = data['bundles'] as List<BundleItem>;
         _accessories = data['accessories'] as List<AccessoryItem>;
-        _inventory = data['inventory'] as List<SkinItem>;
+        _inventory = inventory;
+        _ownedIndex = OwnedSkinIndex.fromInventory(inventory);
         _rankInfo = data['rankInfo'] as RankInfo?;
         _matchHistory = data['matchHistory'] as List<MatchSummary>;
         _quests = data['quests'] as List<QuestItem>;
         _ownedAgents = data['ownedAgents'] as Set<String>? ?? {};
-        _remainingSeconds = (data['remainingSeconds'] is num) ? (data['remainingSeconds'] as num).toInt() : (int.tryParse(data['remainingSeconds']?.toString() ?? '') ?? 43200);
-        _nightMarketRemainingSeconds = (data['nightMarketRemainingSeconds'] is num) ? (data['nightMarketRemainingSeconds'] as num).toInt() : (int.tryParse(data['nightMarketRemainingSeconds']?.toString() ?? '') ?? 518400);
-        _accessoryRemainingSeconds = (data['accessoryRemainingSeconds'] is num) ? (data['accessoryRemainingSeconds'] as num).toInt() : (int.tryParse(data['accessoryRemainingSeconds']?.toString() ?? '') ?? 432000);
+        _remainingSeconds = data['remainingSeconds'] as int? ?? 0;
+        _nightMarketRemainingSeconds = data['nightMarketRemainingSeconds'] as int? ?? 0;
+        _accessoryRemainingSeconds = data['accessoryRemainingSeconds'] as int? ?? 0;
       });
       _startCountdown();
+      await LocalCacheService.saveTokens(accessToken, idToken);
       if (_profile != null) {
         LocalCacheService.saveProfile({
           'gameName': _profile!.gameName,
@@ -183,11 +192,28 @@ class _ShopScreenState extends State<ShopScreen> {
           'puuid': _profile!.puuid,
         });
       }
-    } catch (e) {
+    } on SessionExpiredException catch (e) {
+      // The token is genuinely dead: sign out locally and ask to log in again.
+      await LocalCacheService.clearTokens();
       if (!mounted) return;
       setState(() {
-        _error = e.toString().replaceAll('Exception: ', '');
+        _clearAllData();
+        _error = e.message;
       });
+    } catch (e) {
+      // Transient failure (offline, Riot maintenance...): keep the session
+      // and any already-loaded data instead of forcing a re-login.
+      if (!mounted) return;
+      final message = 'Could not load data. Check your connection and try again.\n(${e.toString().replaceAll('Exception: ', '')})';
+      if (_profile != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message), backgroundColor: AppColors.primary),
+        );
+      } else {
+        setState(() {
+          _error = message;
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -197,182 +223,25 @@ class _ShopScreenState extends State<ShopScreen> {
     }
   }
 
+  void _startCountdown() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      setState(() {
+        if (_remainingSeconds > 0) _remainingSeconds--;
+        if (_nightMarketRemainingSeconds > 0) _nightMarketRemainingSeconds--;
+        if (_accessoryRemainingSeconds > 0) _accessoryRemainingSeconds--;
+        for (var b in _bundles) {
+          if (b.remainingSeconds > 0) {
+            b.remainingSeconds--;
+          }
+        }
+      });
+    });
+  }
+
   void _showSkinDetailModal(SkinItem skin) {
     SkinDetailModal.show(context, skin);
-  }
-
-
-
-  void _showAgentDetailModal(String agentUuid) {
-    final agentData = ValorantApiService.getAgentFullData(agentUuid);
-    if (agentData == null) return;
-
-    final name = (agentData['displayName'] ?? 'Agent').toString();
-    final description = (agentData['description'] ?? 'Valorant Protocol Agent.').toString();
-    final fullPortrait = (agentData['fullPortrait'] ?? agentData['displayIcon'] ?? '').toString();
-    final roleName = (agentData['role']?['displayName'] ?? 'Initiator').toString();
-    final roleIcon = (agentData['role']?['displayIcon'] ?? '').toString();
-    final abilities = (agentData['abilities'] as List? ?? []);
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF1B1B26),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return Container(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
-          padding: const EdgeInsets.all(20.0),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Agent Header & Role Badge
-                Row(
-                  children: [
-                    if (roleIcon.isNotEmpty)
-                      CachedNetworkImage(imageUrl: roleIcon, width: 24, height: 24)
-                    else
-                      const Icon(Icons.flash_on, color: Color(0xFFFF4655), size: 24),
-                    const SizedBox(width: 8),
-                    Text(
-                      roleName.toUpperCase(),
-                      style: const TextStyle(color: Color(0xFFFF4655), fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1.2),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  name.toUpperCase(),
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 28, letterSpacing: 1.5),
-                ),
-                const SizedBox(height: 12),
-
-                // Full Portrait
-                if (fullPortrait.isNotEmpty)
-                  Center(
-                    child: CachedNetworkImage(imageUrl: fullPortrait, height: 220, fit: BoxFit.contain),
-                  ),
-                const SizedBox(height: 16),
-
-                // Lore Biography
-                const Text('BIOGRAPHY', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 1.0)),
-                const SizedBox(height: 6),
-                Text(
-                  description,
-                  style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
-                ),
-                const SizedBox(height: 20),
-
-                // Abilities Header
-                const Text('ABILITIES', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 1.2)),
-                const SizedBox(height: 12),
-
-                // List of 4 Abilities
-                ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: abilities.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final ab = abilities[index];
-                    final abName = (ab['displayName'] ?? 'Ability').toString();
-                    final abDesc = (ab['description'] ?? '').toString();
-                    final abIcon = (ab['displayIcon'] ?? '').toString();
-                    final slot = (ab['slot'] ?? 'Ability').toString();
-
-                    return Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.black26,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white10),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(color: const Color(0xFFFF4655).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-                            child: abIcon.isNotEmpty
-                                ? CachedNetworkImage(imageUrl: abIcon, fit: BoxFit.contain)
-                                : const Icon(Icons.flash_on, color: Color(0xFFFF4655), size: 20),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(abName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(4)),
-                                      child: Text(slot, style: const TextStyle(color: Colors.white54, fontSize: 9, fontWeight: FontWeight.bold)),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(abDesc, style: const TextStyle(color: Colors.white60, fontSize: 12, height: 1.3)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  String _cleanGameMode(String rawMode) {
-    if (rawMode.isEmpty) return 'Competitive';
-    final lower = rawMode.toLowerCase();
-
-    if (lower.contains('hurm') || lower.contains('tdm')) return 'Team Deathmatch';
-    if (lower.contains('skirmish')) return 'Skirmish';
-    if (lower.contains('competitive') || lower.contains('bomb_c') || lower == 'bomb_c') return 'Competitive';
-    if (lower.contains('unrated') || lower.contains('bomb_u') || lower == 'bomb_u') return 'Unrated';
-    if (lower.contains('swiftplay') || lower.contains('bomb_s') || lower == 'swift') return 'Swiftplay';
-    if (lower.contains('spikerush') || lower.contains('spike_rush')) return 'Spike Rush';
-    if (lower.contains('deathmatch') || lower.contains('dm')) return 'Deathmatch';
-    if (lower.contains('gungame') || lower.contains('escalation')) return 'Escalation';
-    if (lower.contains('oneforall') || lower.contains('replication')) return 'Replication';
-    if (lower.contains('snowball')) return 'Snowball Fight';
-    if (lower.contains('premier')) return 'Premier';
-    if (lower.contains('bomb')) return 'Competitive';
-
-    final cleaned = rawMode
-        .replaceAll(RegExp(r'.*Gamemode\.', caseSensitive: false), '')
-        .replaceAll(RegExp(r'GameMode', caseSensitive: false), '')
-        .replaceAll('_C', '')
-        .replaceAll('_U', '')
-        .trim();
-
-    return cleaned.isNotEmpty ? cleaned : 'Competitive';
   }
 
   void _showMatchDetailsModal(MatchSummary match) {
@@ -380,7 +249,6 @@ class _ShopScreenState extends State<ShopScreen> {
       match: match,
       profile: _profile,
       rankInfo: _rankInfo,
-      ownedAgents: _ownedAgents,
     );
     MatchDetailsModal.show(
       context,
@@ -391,15 +259,9 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF121218),
+      backgroundColor: AppColors.background,
       bottomNavigationBar: _profile != null
           ? BottomNavigationBar(
               currentIndex: _currentNavIndex,
@@ -408,8 +270,8 @@ class _ShopScreenState extends State<ShopScreen> {
                   _currentNavIndex = index;
                 });
               },
-              backgroundColor: const Color(0xFF1B1B26),
-              selectedItemColor: const Color(0xFFFF4655),
+              backgroundColor: AppColors.surface,
+              selectedItemColor: AppColors.primary,
               unselectedItemColor: Colors.white38,
               type: BottomNavigationBarType.fixed,
               selectedFontSize: 11,
@@ -417,17 +279,17 @@ class _ShopScreenState extends State<ShopScreen> {
               items: const [
                 BottomNavigationBarItem(
                   icon: Icon(Icons.shopping_basket_outlined),
-                  activeIcon: Icon(Icons.shopping_basket, color: Color(0xFFFF4655)),
+                  activeIcon: Icon(Icons.shopping_basket, color: AppColors.primary),
                   label: 'Shop',
                 ),
                 BottomNavigationBarItem(
                   icon: Icon(Icons.person_outline),
-                  activeIcon: Icon(Icons.person, color: Color(0xFFFF4655)),
+                  activeIcon: Icon(Icons.person, color: AppColors.primary),
                   label: 'Profile',
                 ),
                 BottomNavigationBarItem(
                   icon: Icon(Icons.group_outlined),
-                  activeIcon: Icon(Icons.group, color: Color(0xFFFF4655)),
+                  activeIcon: Icon(Icons.group, color: AppColors.primary),
                   label: 'Accounts',
                 ),
               ],
@@ -451,11 +313,11 @@ class _ShopScreenState extends State<ShopScreen> {
               height: 70,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFFFF4655).withValues(alpha: 0.15),
+                color: AppColors.primary.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
               child: const CircularProgressIndicator(
-                color: Color(0xFFFF4655),
+                color: AppColors.primary,
                 strokeWidth: 3,
               ),
             ),
@@ -496,17 +358,17 @@ class _ShopScreenState extends State<ShopScreen> {
               width: 90,
               height: 90,
               decoration: BoxDecoration(
-                color: const Color(0xFFFF4655).withValues(alpha: 0.15),
+                color: AppColors.primary.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFFF4655).withValues(alpha: 0.4), width: 2),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.4), width: 2),
               ),
-              child: const Icon(Icons.shield_outlined, color: Color(0xFFFF4655), size: 44),
+              child: const Icon(Icons.shield_outlined, color: AppColors.primary, size: 44),
             ),
             const SizedBox(height: 24),
             const Text(
-              'VALORANT TRACKER',
+              'VALOCHECK',
               style: TextStyle(
-                color: Color(0xFFECE8E1),
+                color: AppColors.offWhite,
                 fontSize: 22,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 1.5,
@@ -514,7 +376,7 @@ class _ShopScreenState extends State<ShopScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Track Daily Store, Night Market, Career Rank & Collection directly on your mobile device!',
+              'Track your Daily Store, Night Market, Career Rank & Collection on mobile.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white60, fontSize: 13),
             ),
@@ -524,7 +386,7 @@ class _ShopScreenState extends State<ShopScreen> {
               height: 52,
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFF4655),
+                  backgroundColor: AppColors.primary,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -565,1388 +427,132 @@ class _ShopScreenState extends State<ShopScreen> {
                   ],
                 ),
               ),
-            ]
+            ],
+            const SizedBox(height: 24),
+            const Text(
+              'ValoCheck is an unofficial companion app and is not endorsed by Riot Games.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white30, fontSize: 10),
+            ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildTopHeader(String titleText) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      color: const Color(0xFF121218),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // Avatar + Full Username
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFFF4655).withValues(alpha: 0.5), width: 1.5),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: (_profile?.cardIcon.isNotEmpty ?? false)
-                          ? CachedNetworkImage(
-                              imageUrl: _profile!.cardIcon,
-                              width: 34,
-                              height: 34,
-                              fit: BoxFit.cover,
-                              errorWidget: (context, url, error) => Container(
-                                color: const Color(0xFFFF4655).withValues(alpha: 0.2),
-                                child: const Icon(Icons.person, color: Color(0xFFFF4655), size: 18),
-                              ),
-                            )
-                          : Container(
-                              color: const Color(0xFFFF4655).withValues(alpha: 0.2),
-                              child: const Icon(Icons.person, color: Color(0xFFFF4655), size: 18),
-                            ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _profile?.riotId ?? '',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-              // Currency Balances Pill Bar
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildCurrencyPill('https://media.valorant-api.com/currencies/85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741/displayicon.png', '${_profile?.vp ?? 0}'),
-                  const SizedBox(width: 4),
-                  _buildCurrencyPill('https://media.valorant-api.com/currencies/e59aa87c-4cbf-517a-5983-6e81511be9b7/displayicon.png', '${_profile?.rad ?? 0}'),
-                  const SizedBox(width: 4),
-                  _buildCurrencyPill('https://media.valorant-api.com/currencies/85ca954a-41f2-ce94-9b45-8ca3dd39a00d/displayicon.png', '${_profile?.kc ?? 0}'),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            titleText,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w900,
-              fontSize: 28,
-              letterSpacing: 1.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCurrencyPill(String iconUrl, String amount) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1B1B26),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CachedNetworkImage(
-            imageUrl: iconUrl,
-            width: 14,
-            height: 14,
-            fit: BoxFit.contain,
-            placeholder: (context, url) => const SizedBox(width: 14, height: 14),
-            errorWidget: (context, url, error) => const Icon(Icons.monetization_on, color: Colors.amber, size: 14),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            amount,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 11,
-            ),
-          ),
-        ],
       ),
     );
   }
 
   Widget _buildActiveMainTab() {
     switch (_currentNavIndex) {
-      case 0:
-        return _buildShopMainTab();
       case 1:
         return _buildProfileMainTab();
       case 2:
-        return _buildAccountsMainTab();
+        return AccountsTab(
+          profile: _profile,
+          rankInfo: _rankInfo,
+          onSelect: () => setState(() => _currentNavIndex = 0),
+          onLogout: _handleLogout,
+          onSwitchAccount: _handleSwitchAccount,
+        );
+      case 0:
       default:
         return _buildShopMainTab();
     }
   }
 
-  // --- TAB 1: SHOP ---
   Widget _buildShopMainTab() {
-    final subTabs = ['DAILY SHOP', 'ACCESSORY SHOP', 'NIGHT MARKET', 'BUNDLES'];
-
-    return Column(
-      children: [
-        _buildTopHeader('STORE'),
-        // Top Sub-tabs
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: List.generate(subTabs.length, (index) {
-              final isSelected = _shopSubTab == index;
-              return GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _shopSubTab = index;
-                  });
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  margin: const EdgeInsets.only(right: 12),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: isSelected ? const Color(0xFFFF4655) : Colors.transparent,
-                        width: 2,
-                      ),
-                    ),
-                  ),
-                  child: Text(
-                    subTabs[index],
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.white38,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ),
-        ),
-        const Divider(color: Colors.white10, height: 1),
-        Expanded(
-          child: _buildShopSubTabContent(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildShopSubTabContent() {
     Widget content;
     switch (_shopSubTab) {
-      case 0:
-        content = _buildDailyShopContent();
-        break;
       case 1:
-        content = _buildAccessoryShopContent();
+        content = AccessoryShopTab(
+          accessories: _accessories,
+          remainingSeconds: _accessoryRemainingSeconds,
+        );
         break;
       case 2:
-        content = _buildNightMarketContent();
+        content = NightMarketTab(
+          items: _nightMarketSkins,
+          ownedIndex: _ownedIndex,
+          remainingSeconds: _nightMarketRemainingSeconds,
+          onSkinTap: _showSkinDetailModal,
+        );
         break;
       case 3:
-        content = _buildBundlesContent();
+        content = BundlesTab(bundles: _bundles);
         break;
+      case 0:
       default:
-        content = _buildDailyShopContent();
+        content = DailyShopTab(
+          skins: _dailySkins,
+          ownedIndex: _ownedIndex,
+          remainingSeconds: _remainingSeconds,
+          onSkinTap: _showSkinDetailModal,
+        );
     }
-    return RefreshIndicator(
-      onRefresh: _onRefresh,
-      color: const Color(0xFFFF4655),
-      backgroundColor: const Color(0xFF1B1B26),
-      child: content,
-    );
-  }
-
-  Widget _buildDailyShopContent() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'TIME LEFT:',
-              style: TextStyle(
-                color: Colors.white54,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-                letterSpacing: 1.2,
-              ),
-            ),
-            Text(
-              _formatTimer(_remainingSeconds),
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                fontFamily: 'monospace',
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 0.85,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-          ),
-          itemCount: _dailySkins.length,
-          itemBuilder: (context, index) {
-            return _buildCleanSkinCard(_dailySkins[index]);
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAccessoryShopContent() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'NEXT OFFER:',
-              style: TextStyle(
-                color: Colors.white54,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-                letterSpacing: 1.2,
-              ),
-            ),
-            Text(
-              _formatLongTimer(_accessoryRemainingSeconds),
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                fontFamily: 'monospace',
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        if (_accessories.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(32.0),
-            child: Center(
-              child: Text('Accessory Shop is currently unavailable.', style: TextStyle(color: Colors.white54)),
-            ),
-          )
-        else
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 1,
-              childAspectRatio: 2.2,
-              mainAxisSpacing: 12,
-            ),
-            itemCount: _accessories.length,
-            itemBuilder: (context, index) {
-              final acc = _accessories[index];
-              return Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1B1B26),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      acc.displayName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const Spacer(),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        if (acc.displayIcon.isNotEmpty)
-                          CachedNetworkImage(imageUrl: acc.displayIcon, height: 50, fit: BoxFit.contain)
-                        else
-                          const Icon(Icons.stars, color: Colors.white24, size: 40),
-                        Row(
-                          children: [
-                            const Icon(Icons.diamond_outlined, color: Colors.white70, size: 16),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${acc.costKC}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-      ],
-    );
-  }
-
-  Widget _buildNightMarketContent() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'TIME LEFT:',
-              style: TextStyle(
-                color: Colors.white54,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-                letterSpacing: 1.2,
-              ),
-            ),
-            Text(
-              _formatLongTimer(_nightMarketRemainingSeconds),
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                fontFamily: 'monospace',
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        if (_nightMarketSkins.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(32.0),
-            child: Center(
-              child: Text('Night Market is not active.', style: TextStyle(color: Colors.white54)),
-            ),
-          )
-        else
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 1,
-              childAspectRatio: 2.0,
-              mainAxisSpacing: 12,
-            ),
-            itemCount: _nightMarketSkins.length,
-            itemBuilder: (context, index) {
-              final item = _nightMarketSkins[index];
-              final skin = item['skin'] as SkinItem;
-              final original = item['originalCost'] as int? ?? 1775;
-              final discount = item['discountPercent'] as int? ?? 37;
-              final isOwned = _inventory.any((inv) => inv.uuid == skin.uuid || (inv.parentName.isNotEmpty && inv.parentName == skin.parentName));
-
-              return InkWell(
-                onTap: () => _showSkinDetailModal(skin),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1B1B26),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Stack(
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            skin.parentName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 18,
-                            ),
-                          ),
-                          const Spacer(),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              if (isOwned || skin.cost == 0)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF34D399).withValues(alpha: 0.2),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: const Text(
-                                    'OWNED',
-                                    style: TextStyle(
-                                      color: Color(0xFF34D399),
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                )
-                              else
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '$original VP',
-                                      style: const TextStyle(
-                                        color: Colors.redAccent,
-                                        fontSize: 12,
-                                        decoration: TextDecoration.lineThrough,
-                                        decorationColor: Colors.redAccent,
-                                      ),
-                                    ),
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.monetization_on_outlined, color: Colors.white, size: 16),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          '${skin.cost} VP',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 15,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              if (skin.displayIcon.isNotEmpty)
-                                Flexible(
-                                  child: CachedNetworkImage(
-                                    imageUrl: skin.displayIcon,
-                                    height: 55,
-                                    fit: BoxFit.contain,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      if (!isOwned && skin.cost > 0)
-                        Positioned(
-                          top: 0,
-                          right: 0,
-                          child: Text(
-                            '-$discount%',
-                            style: const TextStyle(
-                              color: Colors.redAccent,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-      ],
-    );
-  }
-
-  Widget _buildBundlesContent() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        if (_bundles.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(32.0),
-            child: Center(
-              child: Text('No Featured Bundles active.', style: TextStyle(color: Colors.white54)),
-            ),
-          )
-        else ...[
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'TIME LEFT:',
-                style: TextStyle(
-                  color: Colors.white54,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              Text(
-                _formatLongTimer(_bundles.first.remainingSeconds),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                  fontFamily: 'monospace',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _bundles.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 16),
-            itemBuilder: (context, index) {
-              final b = _bundles[index];
-              return Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1B1B26),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (b.displayIcon.isNotEmpty)
-                      ClipRRect(
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                        child: CachedNetworkImage(imageUrl: b.displayIcon, height: 180, fit: BoxFit.cover),
-                      ),
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                b.displayName.toUpperCase(),
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                              ),
-                              Text(
-                                '${b.cost} VP',
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text('EXPIRES IN:', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
-                              Text(
-                                _formatLongTimer(b.remainingSeconds),
-                                style: const TextStyle(color: Color(0xFFFF4655), fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
-      ],
-    );
-  }
-
-  // --- TAB 2: PROFILE ---
-  Widget _buildProfileMainTab() {
-    final subTabs = ['COLLECTION', 'AGENTS', 'CAREER'];
 
     return Column(
       children: [
-        _buildTopHeader('PROFILE'),
-        // Top Sub-tabs
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: List.generate(subTabs.length, (index) {
-              final isSelected = _profileSubTab == index;
-              return GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _profileSubTab = index;
-                  });
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  margin: const EdgeInsets.only(right: 12),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: isSelected ? const Color(0xFFFF4655) : Colors.transparent,
-                        width: 2,
-                      ),
-                    ),
-                  ),
-                  child: Text(
-                    subTabs[index],
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.white38,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ),
+        TopHeader(profile: _profile, title: 'STORE'),
+        SubTabBar(
+          tabs: _shopSubTabs,
+          selectedIndex: _shopSubTab,
+          onTabSelected: (index) => setState(() => _shopSubTab = index),
         ),
         const Divider(color: Colors.white10, height: 1),
         Expanded(
-          child: _buildProfileSubTabContent(),
+          child: RefreshIndicator(
+            onRefresh: _onRefresh,
+            color: AppColors.primary,
+            backgroundColor: AppColors.surface,
+            child: content,
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildProfileSubTabContent() {
+  Widget _buildProfileMainTab() {
     Widget content;
     switch (_profileSubTab) {
-      case 0:
-        content = _buildCollectionContent();
-        break;
       case 1:
-        content = _buildAgentsContent();
+        content = AgentsTab(
+          ownedAgents: _ownedAgents,
+          selectedIndex: _selectedAgentIndex,
+          onAgentSelected: (index) => setState(() => _selectedAgentIndex = index),
+        );
         break;
       case 2:
-        content = _buildCareerContent();
+        content = CareerTab(
+          rankInfo: _rankInfo,
+          quests: _quests,
+          matchHistory: _matchHistory,
+          onMatchTap: _showMatchDetailsModal,
+        );
         break;
+      case 0:
       default:
-        content = _buildCollectionContent();
-    }
-    return RefreshIndicator(
-      onRefresh: _onRefresh,
-      color: const Color(0xFFFF4655),
-      backgroundColor: const Color(0xFF1B1B26),
-      child: content,
-    );
-  }
-
-  Widget _buildCollectionContent() {
-    final Map<String, SkinItem> uniqueInventory = {};
-    for (var skin in _inventory) {
-      final key = skin.parentName;
-      if (!uniqueInventory.containsKey(key)) {
-        uniqueInventory[key] = skin;
-      }
-    }
-    final ownedSkins = uniqueInventory.values.toList();
-
-    if (ownedSkins.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(32.0),
-        child: Center(
-          child: Text('No owned skins found in collection.', style: TextStyle(color: Colors.white54)),
-        ),
-      );
+        content = CollectionTab(
+          inventory: _inventory,
+          onSkinTap: _showSkinDetailModal,
+        );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: ownedSkins.length,
-      itemBuilder: (context, index) {
-        final skin = ownedSkins[index];
-        return _buildFullWidthWeaponCard(skin, skin.parentName);
-      },
-    );
-  }
-
-  Widget _buildFullWidthWeaponCard(SkinItem skin, String weaponName) {
-    final title = skin.displayName.startsWith('Standard') ? weaponName : (skin.cleanName.isNotEmpty ? skin.cleanName : skin.parentName);
-
-    return GestureDetector(
-      onTap: () => _showSkinDetailModal(skin),
-      child: Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1B1B26),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-                fontSize: 15,
-                letterSpacing: 0.3,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Center(
-              child: skin.displayIcon.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: skin.displayIcon,
-                      height: 70,
-                      fit: BoxFit.contain,
-                      placeholder: (context, url) => const SizedBox(height: 70),
-                      errorWidget: (context, url, error) => const Icon(Icons.shield, color: Colors.white24, size: 40),
-                    )
-                  : const Icon(Icons.shield, color: Colors.white24, size: 40),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAgentsContent() {
-    final agentsList = ValorantApiService.getPlayableAgentsList(_ownedAgents);
-
-    if (agentsList.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(color: Color(0xFFFF4655)),
-      );
-    }
-
-    if (_selectedAgentIndex >= agentsList.length) {
-      _selectedAgentIndex = 0;
-    }
-
-    final activeAgent = agentsList[_selectedAgentIndex];
-    final isOwned = activeAgent['isOwned'] as bool? ?? false;
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
+    return Column(
       children: [
-        GestureDetector(
-          onTap: () {
-            _showAgentDetailModal(activeAgent['uuid']);
-          },
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1B1B26),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  (activeAgent['displayName'] as String).toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 28,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(
-                      isOwned ? Icons.check_circle : Icons.lock,
-                      color: isOwned ? const Color(0xFF34D399) : Colors.redAccent,
-                      size: 14,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      isOwned ? 'Owned' : 'Locked',
-                      style: TextStyle(
-                        color: isOwned ? const Color(0xFF34D399) : Colors.redAccent,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                if ((activeAgent['fullPortrait'] as String).isNotEmpty)
-                  Center(
-                    child: CachedNetworkImage(
-                      imageUrl: activeAgent['fullPortrait'],
-                      height: 260,
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.black26,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.flash_on, color: Colors.white70, size: 14),
-                          const SizedBox(width: 4),
-                          Text(
-                            activeAgent['roleName'] as String,
-                            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Text(
-                      'TAP FOR ABILITIES & LORE ➔',
-                      style: TextStyle(color: Color(0xFFFF4655), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.8),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+        TopHeader(profile: _profile, title: 'PROFILE'),
+        SubTabBar(
+          tabs: _profileSubTabs,
+          selectedIndex: _profileSubTab,
+          onTabSelected: (index) => setState(() => _profileSubTab = index),
         ),
-        const SizedBox(height: 16),
-        SizedBox(
-          height: 100,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: agentsList.length,
-            itemBuilder: (context, index) {
-              final a = agentsList[index];
-              final isSelected = index == _selectedAgentIndex;
-              final agentOwned = a['isOwned'] as bool? ?? false;
-
-              return GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _selectedAgentIndex = index;
-                  });
-                },
-                child: Container(
-                  width: 80,
-                  margin: const EdgeInsets.only(right: 12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1B1B26),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isSelected ? const Color(0xFFFF4655) : Colors.transparent,
-                      width: 2,
-                    ),
-                  ),
-                  child: Stack(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: CachedNetworkImage(
-                          imageUrl: a['displayIcon'],
-                          width: 80,
-                          height: 100,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 4,
-                        right: 4,
-                        child: Container(
-                          padding: const EdgeInsets.all(2),
-                          decoration: const BoxDecoration(
-                            color: Colors.black87,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            agentOwned ? Icons.check : Icons.lock,
-                            color: agentOwned ? const Color(0xFF34D399) : Colors.white54,
-                            size: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+        const Divider(color: Colors.white10, height: 1),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _onRefresh,
+            color: AppColors.primary,
+            backgroundColor: AppColors.surface,
+            child: content,
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildCareerContent() {
-    final rank = _rankInfo;
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        if (rank != null)
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1B1B26),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFFF4655).withValues(alpha: 0.3)),
-            ),
-            child: Column(
-              children: [
-                if (rank.currentTierIcon.isNotEmpty)
-                  CachedNetworkImage(imageUrl: rank.currentTierIcon, height: 80)
-                else
-                  const Icon(Icons.military_tech, color: Color(0xFFFF4655), size: 70),
-                const SizedBox(height: 12),
-                Text(
-                  rank.currentTierName.toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 22,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${rank.currentRR} / 100 RR',
-                  style: const TextStyle(
-                    color: Color(0xFFFF4655),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: LinearProgressIndicator(
-                    value: (rank.currentRR % 100) / 100.0,
-                    minHeight: 8,
-                    backgroundColor: Colors.white10,
-                    color: const Color(0xFFFF4655),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    Column(
-                      children: [
-                        const Text('PEAK RANK', style: TextStyle(color: Colors.white38, fontSize: 10)),
-                        const SizedBox(height: 4),
-                        Text(rank.peakTierName, style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
-                      ],
-                    ),
-                    Column(
-                      children: [
-                        const Text('WIN / TOTAL', style: TextStyle(color: Colors.white38, fontSize: 10)),
-                        const SizedBox(height: 4),
-                        Text('${rank.totalWins} / ${rank.totalGames}', style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 13)),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        const SizedBox(height: 24),
-        const Text(
-          'ACTIVE QUESTS & BATTLEPASS',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w900,
-            fontSize: 16,
-            letterSpacing: 1.2,
-          ),
-        ),
-        const SizedBox(height: 12),
-        if (_quests.isEmpty)
-          const Text('No active quests.', style: TextStyle(color: Colors.white54))
-        else
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _quests.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 8),
-            itemBuilder: (context, index) {
-              final q = _quests[index];
-              return Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1B1B26),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(q.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                    Text('+${q.rewardXP} XP', style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12)),
-                  ],
-                ),
-              );
-            },
-          ),
-        const SizedBox(height: 24),
-        const Text(
-          'RECENT 20 MATCHES',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w900,
-            fontSize: 16,
-            letterSpacing: 1.2,
-          ),
-        ),
-        const SizedBox(height: 12),
-        ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: _matchHistory.length,
-          separatorBuilder: (context, index) => const SizedBox(height: 10),
-          itemBuilder: (context, index) {
-            final m = _matchHistory[index];
-            return GestureDetector(
-              onTap: () {
-                _showMatchDetailsModal(m);
-              },
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1B1B26),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
-                      child: m.agentIcon.isNotEmpty ? CachedNetworkImage(imageUrl: m.agentIcon, fit: BoxFit.cover) : const Icon(Icons.person, color: Colors.white38),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Wrap(
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: [
-                              Text(
-                                m.isVictory ? 'VICTORY (${m.scoreText})' : 'DEFEAT (${m.scoreText})',
-                                style: TextStyle(
-                                  color: m.isVictory ? const Color(0xFF34D399) : Colors.redAccent,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.white10,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  _cleanGameMode(m.gameMode).toUpperCase(),
-                                  style: const TextStyle(color: Colors.amber, fontSize: 9, fontWeight: FontWeight.w900),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 2),
-                          Text('Map: ${m.mapName} • ${m.agentName}', style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                        ],
-                      ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        const Text('K / D / A', style: TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 2),
-                        Text('${m.kills}/${m.deaths}/${m.assists}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                      ],
-                    ),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.chevron_right, color: Colors.white38, size: 18),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  // --- TAB 3: ACCOUNTS ---
-  Widget _buildAccountsMainTab() {
-    final rankText = _rankInfo != null ? '${_rankInfo!.currentTierName} - ${_rankInfo!.currentRR} RR' : 'UNRANKED';
-    final rankIcon = _rankInfo != null ? _rankInfo!.currentTierIcon : '';
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        const Text(
-          'ACCOUNTS',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w900,
-            fontSize: 28,
-            letterSpacing: 1.5,
-          ),
-        ),
-        const SizedBox(height: 20),
-
-        // Account Card matching Screenshot 1
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1B1B26),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  // Player Card Banner with Level Badge
-                  Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: (_profile?.cardIcon.isNotEmpty ?? false)
-                            ? CachedNetworkImage(
-                                imageUrl: _profile!.cardIcon,
-                                width: 70,
-                                height: 70,
-                                fit: BoxFit.cover,
-                                errorWidget: (context, url, error) => Container(
-                                  width: 70,
-                                  height: 70,
-                                  color: const Color(0xFFFF4655).withValues(alpha: 0.2),
-                                  child: const Icon(Icons.person, color: Color(0xFFFF4655), size: 36),
-                                ),
-                              )
-                            : Container(
-                                width: 70,
-                                height: 70,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFF4655).withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: const Icon(Icons.person, color: Color(0xFFFF4655), size: 36),
-                              ),
-                      ),
-                      Positioned(
-                        top: -6,
-                        left: -6,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF121218),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.white38, width: 1.2),
-                          ),
-                          child: Text(
-                            '${_profile?.accountLevel ?? 1}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 10,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _profile?.riotId ?? 'Riot User',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 18,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            if (rankIcon.isNotEmpty)
-                              CachedNetworkImage(imageUrl: rankIcon, width: 20, height: 20)
-                            else
-                              const Icon(Icons.shield, color: Colors.amber, size: 16),
-                            const SizedBox(width: 6),
-                            Text(
-                              rankText,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 44,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFF4655),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _currentNavIndex = 0;
-                          });
-                        },
-                        child: const Text(
-                          'Select',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.logout, color: Color(0xFFFF4655), size: 20),
-                      onPressed: _handleLogout,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 40),
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFF4655),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed: _handleAddAccount,
-            icon: const Icon(Icons.swap_horiz, color: Colors.white),
-            label: const Text(
-              'Switch Account',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCleanSkinCard(SkinItem skin) {
-    final isOwned = _inventory.any((inv) => inv.uuid == skin.uuid || (inv.parentName.isNotEmpty && inv.parentName == skin.parentName));
-
-    return InkWell(
-      onTap: () => _showSkinDetailModal(skin),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1B1B26),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              skin.parentName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 4),
-            if (isOwned || skin.cost == 0)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF34D399).withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  'OWNED',
-                  style: TextStyle(
-                    color: Color(0xFF34D399),
-                    fontWeight: FontWeight.w900,
-                    fontSize: 10,
-                  ),
-                ),
-              )
-            else
-              Row(
-                children: [
-                  const Icon(Icons.monetization_on_outlined, color: Colors.white70, size: 12),
-                  const SizedBox(width: 2),
-                  Text(
-                    '${skin.cost}',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            const Spacer(),
-            if (skin.displayIcon.isNotEmpty)
-              Center(
-                child: CachedNetworkImage(
-                  imageUrl: skin.displayIcon,
-                  height: 60,
-                  fit: BoxFit.contain,
-                ),
-              )
-            else
-              const Center(child: Icon(Icons.shield, color: Colors.white24, size: 40)),
-          ],
-        ),
-      ),
     );
   }
 }

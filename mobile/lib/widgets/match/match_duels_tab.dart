@@ -1,7 +1,7 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/match_summary.dart';
+import '../common/data_unavailable.dart';
 
 class MatchDuelsTab extends StatelessWidget {
   final MatchSummary match;
@@ -43,7 +43,11 @@ class MatchDuelsTab extends StatelessWidget {
       }
     }
 
-    final rand = Random(match.matchId.hashCode);
+    if (match.rawMatchDetails == null || enemyTeam.isEmpty) {
+      return const DataUnavailable(
+        message: 'Duel data is unavailable for this match.',
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -51,17 +55,9 @@ class MatchDuelsTab extends StatelessWidget {
         const Text('1v1 HEAD-TO-HEAD DUELS MATRIX', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.0)),
         const SizedBox(height: 10),
         ...enemyTeam.map((e) {
-          int kills = 0;
-          int deaths = 0;
-
-          if (match.rawMatchDetails != null) {
-            final enemySub = (e['subject'] ?? '').toString();
-            kills = duelsMap[enemySub]?['kills'] ?? 0;
-            deaths = duelsMap[enemySub]?['deaths'] ?? 0;
-          } else {
-            kills = rand.nextInt(6);
-            deaths = rand.nextInt(5);
-          }
+          final enemySub = (e['subject'] ?? '').toString();
+          final kills = duelsMap[enemySub]?['kills'] ?? 0;
+          final deaths = duelsMap[enemySub]?['deaths'] ?? 0;
 
           final isWin = kills >= deaths;
           return Container(

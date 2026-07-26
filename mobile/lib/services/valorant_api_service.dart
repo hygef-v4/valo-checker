@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/skin_item.dart';
 import '../models/accessory_item.dart';
+import 'riot_api_client.dart';
 
 class ValorantApiService {
   static final Map<String, dynamic> _skinsFullCache = {};
@@ -17,6 +18,7 @@ class ValorantApiService {
   static final Map<String, dynamic> _agentsRawCache = {};
   static final Map<String, Map<String, String>> _mapsCache = {};
   static final Map<String, Map<String, String>> _weaponsCache = {};
+  static final Map<String, dynamic> _missionsCache = {};
   static bool _isLoaded = false;
 
   static Future<void> loadMetadataCache() async {
@@ -24,18 +26,19 @@ class ValorantApiService {
 
     try {
       final responses = await Future.wait([
-        http.get(Uri.parse('https://valorant-api.com/v1/weapons/skinlevels')),
-        http.get(Uri.parse('https://valorant-api.com/v1/contenttiers')),
-        http.get(Uri.parse('https://valorant-api.com/v1/bundles')),
-        http.get(Uri.parse('https://valorant-api.com/v1/sprays')),
-        http.get(Uri.parse('https://valorant-api.com/v1/playercards')),
-        http.get(Uri.parse('https://valorant-api.com/v1/buddies/levels')),
-        http.get(Uri.parse('https://valorant-api.com/v1/playertitles')),
-        http.get(Uri.parse('https://valorant-api.com/v1/competitivetiers')),
-        http.get(Uri.parse('https://valorant-api.com/v1/agents?isPlayableCharacter=true')),
-        http.get(Uri.parse('https://valorant-api.com/v1/maps')),
-        http.get(Uri.parse('https://valorant-api.com/v1/weapons/skins')),
-        http.get(Uri.parse('https://valorant-api.com/v1/weapons')),
+        RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/weapons/skinlevels')),
+        RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/contenttiers')),
+        RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/bundles')),
+        RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/sprays')),
+        RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/playercards')),
+        RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/buddies/levels')),
+        RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/playertitles')),
+        RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/competitivetiers')),
+        RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/agents?isPlayableCharacter=true')),
+        RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/maps')),
+        RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/weapons/skins')),
+        RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/weapons')),
+        RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/missions')),
       ]);
 
       void populate(http.Response res, Map<String, dynamic> targetMap) {
@@ -146,8 +149,12 @@ class ValorantApiService {
         }
       }
 
+      populate(responses[12], _missionsCache);
+
       _isLoaded = true;
-    } catch (_) {}
+    } catch (e) {
+      RiotApiClient.logError('loadMetadataCache', e);
+    }
   }
 
   static final List<Map<String, String>> officialValorantWeapons = [
@@ -310,8 +317,6 @@ class ValorantApiService {
       displayName: name,
       displayIcon: icon,
       cost: cost,
-      tierColor: '#FF4655',
-      tierName: 'Exclusive',
       videoUrl: video,
       cleanName: clean,
     );
@@ -350,9 +355,24 @@ class ValorantApiService {
     };
   }
 
+  /// Real mission title, XP grant, and completion target from valorant-api
+  /// metadata. Returns empty values for unknown mission IDs so callers can
+  /// fall back honestly instead of inventing numbers.
+  static Map<String, dynamic> resolveMission(String missionUuid) {
+    final raw = _missionsCache[missionUuid.toLowerCase()];
+    if (raw == null) {
+      return {'title': '', 'xpGrant': 0, 'progressToComplete': 0};
+    }
+    return {
+      'title': (raw['title'] ?? raw['displayName'] ?? '').toString(),
+      'xpGrant': raw['xpGrant'] as int? ?? 0,
+      'progressToComplete': raw['progressToComplete'] as int? ?? 0,
+    };
+  }
+
   static AccessoryItem resolveAccessoryItem(String itemId, String itemTypeId, int costKC) {
     final uuid = itemId.toLowerCase();
-    String name = 'Phụ Kiện Valorant';
+    String name = 'Valorant Accessory';
     String icon = '';
     String category = 'Accessory';
 

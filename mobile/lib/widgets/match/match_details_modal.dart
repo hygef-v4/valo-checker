@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/match_summary.dart';
 import '../../models/user_profile.dart';
+import '../../utils/json_utils.dart';
 import 'match_scoreboard_tab.dart';
 import 'match_performance_tab.dart';
 import 'match_economy_tab.dart';
@@ -47,6 +48,20 @@ class MatchDetailsModal extends StatefulWidget {
 
 class _MatchDetailsModalState extends State<MatchDetailsModal> {
   int _activeTab = 0;
+
+  /// Real average combat score (score / rounds played) from raw match data;
+  /// null when the data is missing so the UI omits it rather than guessing.
+  int? _realAcs() {
+    final raw = widget.match.rawMatchDetails;
+    if (raw == null) return null;
+    final players = raw['players'] as List? ?? [];
+    final me = firstWhereOrNull(players, (p) => p['subject'] == widget.profile?.puuid);
+    final stats = me?['stats'];
+    final score = stats?['score'] as int? ?? 0;
+    final rounds = stats?['roundsPlayed'] as int? ?? 0;
+    if (rounds <= 0) return null;
+    return score ~/ rounds;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -199,7 +214,7 @@ class _MatchDetailsModalState extends State<MatchDetailsModal> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'K/D Ratio: ${match.deaths > 0 ? (match.kills / match.deaths).toStringAsFixed(2) : match.kills.toStringAsFixed(2)}  •  Est. ACS: ${(match.kills * 24) + (match.assists * 10)}',
+                          'K/D Ratio: ${match.deaths > 0 ? (match.kills / match.deaths).toStringAsFixed(2) : match.kills.toStringAsFixed(2)}${_realAcs() != null ? '  •  ACS: ${_realAcs()}' : ''}',
                           style: const TextStyle(color: Colors.white60, fontSize: 12),
                         ),
                       ],
