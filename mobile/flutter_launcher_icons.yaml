@@ -1,0 +1,11 @@
+# Launcher icon generation. Source PNGs are produced by tool/generate_icon.dart
+# (flutter test tool/generate_icon.dart). Regenerate platform icons with:
+#   dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#0F1923"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+  adaptive_icon_monochrome: "assets/icon/icon_monochrome.png"
