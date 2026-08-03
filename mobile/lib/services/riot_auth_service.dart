@@ -699,10 +699,15 @@ class RiotAuthService {
         final List<SkinItem> bundleSkins = [];
         for (var item in itemsList) {
           final itemId = item['Item']?['ItemID'] ?? item['ItemID'] ?? '';
+          final itemTypeId = item['Item']?['ItemTypeID'] ?? item['ItemTypeID'] ?? '';
           final cost = item['DiscountedPrice'] ?? item['BasePrice'] ?? 0;
           totalCost += (cost as int? ?? 0);
           if (itemId.toString().isNotEmpty) {
-            bundleSkins.add(ValorantApiService.resolveSkinItem(itemId.toString(), cost is int ? cost : 0));
+            bundleSkins.add(ValorantApiService.resolveSkinItem(
+              itemId.toString(),
+              cost is int ? cost : 0,
+              itemTypeId: itemTypeId.toString(),
+            ));
           }
         }
 

@@ -8,6 +8,7 @@ import '../models/bundle_item.dart';
 import '../models/match_summary.dart';
 import '../models/quest_item.dart';
 import '../models/rank_info.dart';
+import '../models/saved_account.dart';
 import '../models/skin_item.dart';
 import '../models/user_profile.dart';
 import '../services/local_cache_service.dart';
@@ -46,6 +47,9 @@ class _ShopScreenState extends State<ShopScreen> {
   int _shopSubTab = 0;
   int _profileSubTab = 0;
 
+  List<SavedAccount> _savedAccounts = [];
+  String? _activePuuid;
+
   bool _isLoading = false;
   String? _error;
   String? _accessToken;
@@ -82,9 +86,28 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   Future<void> _checkSavedTokenAndAutoLogin() async {
-    final tokens = await LocalCacheService.getValidTokens();
-    if (tokens != null && tokens['accessToken']!.isNotEmpty) {
-      _loadStoreData(tokens['accessToken']!, tokens['idToken'] ?? '');
+    _savedAccounts = await LocalCacheService.getSavedAccounts();
+    _activePuuid = await LocalCacheService.getActivePuuid();
+
+    final activeAccount = await LocalCacheService.getActiveAccount();
+    if (activeAccount != null && activeAccount.accessToken.isNotEmpty) {
+      if (!activeAccount.isTokenExpired) {
+        _loadStoreData(activeAccount.accessToken, activeAccount.idToken);
+      } else {
+        final tokens = await LocalCacheService.getValidTokens();
+        if (tokens != null && tokens['accessToken']!.isNotEmpty) {
+          _loadStoreData(tokens['accessToken']!, tokens['idToken'] ?? '');
+        } else if (mounted) {
+          setState(() {});
+        }
+      }
+    } else {
+      final tokens = await LocalCacheService.getValidTokens();
+      if (tokens != null && tokens['accessToken']!.isNotEmpty) {
+        _loadStoreData(tokens['accessToken']!, tokens['idToken'] ?? '');
+      } else if (mounted) {
+        setState(() {});
+      }
     }
   }
 
@@ -106,7 +129,27 @@ class _ShopScreenState extends State<ShopScreen> {
     }
   }
 
-  Future<void> _handleSwitchAccount() async {
+  Future<void> _handleSelectSavedAccount(SavedAccount account) async {
+    if (account.isTokenExpired) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Token expired. Opening Riot login to re-authenticate...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      await _handleAddAccount();
+      return;
+    }
+
+    await LocalCacheService.setActivePuuid(account.puuid);
+    setState(() {
+      _activePuuid = account.puuid;
+      _clearAllData();
+    });
+    await _loadStoreData(account.accessToken, account.idToken);
+  }
+
+  Future<void> _handleAddAccount() async {
     final result = await Navigator.of(context).push<Map<String, String>>(
       MaterialPageRoute(builder: (context) => const RiotLoginWebview(clearSession: true)),
     );
@@ -116,16 +159,47 @@ class _ShopScreenState extends State<ShopScreen> {
     }
   }
 
+  Future<void> _handleDeleteAccount(SavedAccount account) async {
+    await LocalCacheService.removeAccount(account.puuid);
+    final updatedAccounts = await LocalCacheService.getSavedAccounts();
+    final updatedActivePuuid = await LocalCacheService.getActivePuuid();
+
+    if (!mounted) return;
+    setState(() {
+      _savedAccounts = updatedAccounts;
+      _activePuuid = updatedActivePuuid;
+    });
+
+    if (account.puuid == _profile?.puuid) {
+      if (updatedAccounts.isNotEmpty) {
+        final nextActive = updatedAccounts.first;
+        await _handleSelectSavedAccount(nextActive);
+      } else {
+        await _handleLogout();
+      }
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Removed ${account.riotId}'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   Future<void> _handleLogout() async {
     try {
       final cookieManager = WebViewCookieManager();
       await cookieManager.clearCookies();
     } catch (_) {}
-    await LocalCacheService.clearTokens();
+    await LocalCacheService.clearAllAccounts();
 
     if (!mounted) return;
     setState(() {
       _clearAllData();
+      _savedAccounts = [];
+      _activePuuid = null;
       _currentNavIndex = 0;
     });
 
@@ -186,11 +260,28 @@ class _ShopScreenState extends State<ShopScreen> {
       _startCountdown();
       await LocalCacheService.saveTokens(accessToken, idToken);
       if (_profile != null) {
-        LocalCacheService.saveProfile({
-          'gameName': _profile!.gameName,
-          'tagLine': _profile!.tagLine,
-          'puuid': _profile!.puuid,
-        });
+        final saved = SavedAccount(
+          puuid: _profile!.puuid,
+          gameName: _profile!.gameName,
+          tagLine: _profile!.tagLine,
+          region: _profile!.region,
+          accountLevel: _profile!.accountLevel,
+          cardIcon: _profile!.cardIcon,
+          accessToken: accessToken,
+          idToken: idToken,
+          timestamp: DateTime.now().millisecondsSinceEpoch,
+          rankTierName: _rankInfo?.currentTierName,
+          rankTierIcon: _rankInfo?.currentTierIcon,
+          rankRR: _rankInfo?.currentRR,
+        );
+        await LocalCacheService.saveAccount(saved);
+        final accounts = await LocalCacheService.getSavedAccounts();
+        if (mounted) {
+          setState(() {
+            _savedAccounts = accounts;
+            _activePuuid = _profile!.puuid;
+          });
+        }
       }
     } on SessionExpiredException catch (e) {
       // The token is genuinely dead: sign out locally and ask to log in again.
@@ -446,11 +537,13 @@ class _ShopScreenState extends State<ShopScreen> {
         return _buildProfileMainTab();
       case 2:
         return AccountsTab(
-          profile: _profile,
-          rankInfo: _rankInfo,
-          onSelect: () => setState(() => _currentNavIndex = 0),
-          onLogout: _handleLogout,
-          onSwitchAccount: _handleSwitchAccount,
+          accounts: _savedAccounts,
+          activePuuid: _activePuuid ?? _profile?.puuid,
+          activeProfile: _profile,
+          activeRankInfo: _rankInfo,
+          onSelectAccount: _handleSelectSavedAccount,
+          onDeleteAccount: _handleDeleteAccount,
+          onAddAccount: _handleAddAccount,
         );
       case 0:
       default:
@@ -476,7 +569,11 @@ class _ShopScreenState extends State<ShopScreen> {
         );
         break;
       case 3:
-        content = BundlesTab(bundles: _bundles);
+        content = BundlesTab(
+          bundles: _bundles,
+          ownedIndex: _ownedIndex,
+          onSkinTap: _showSkinDetailModal,
+        );
         break;
       case 0:
       default:

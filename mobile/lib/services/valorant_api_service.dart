@@ -39,6 +39,7 @@ class ValorantApiService {
         RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/weapons/skins')),
         RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/weapons')),
         RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/missions')),
+        RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/buddies')),
       ]);
 
       void populate(http.Response res, Map<String, dynamic> targetMap) {
@@ -57,6 +58,27 @@ class ValorantApiService {
       populate(responses[4], _playerCardsCache);
       populate(responses[5], _buddiesCache);
       populate(responses[6], _playerTitlesCache);
+
+      // Populate Buddies (both buddy UUID and buddy level UUIDs)
+      if (responses[13].statusCode == 200) {
+        final data = jsonDecode(responses[13].body)['data'] as List;
+        for (var buddy in data) {
+          final bUuid = (buddy['uuid'] ?? '').toString().toLowerCase();
+          if (bUuid.isNotEmpty) {
+            _buddiesCache[bUuid] = buddy;
+          }
+          final levels = buddy['levels'] as List? ?? [];
+          for (var l in levels) {
+            final lUuid = (l['uuid'] ?? '').toString().toLowerCase();
+            if (lUuid.isNotEmpty) {
+              _buddiesCache[lUuid] = {
+                'displayName': l['displayName'] ?? buddy['displayName'],
+                'displayIcon': l['displayIcon'] ?? buddy['displayIcon'],
+              };
+            }
+          }
+        }
+      }
 
       // Populate Rank Tiers
       if (responses[7].statusCode == 200) {
@@ -286,39 +308,102 @@ class ValorantApiService {
     };
   }
 
-  static SkinItem resolveSkinItem(String itemUuid, int cost) {
+  static SkinItem resolveSkinItem(String itemUuid, int cost, {String? itemTypeId}) {
     final key = itemUuid.toLowerCase();
-    dynamic item = _skinsFullCache[key] ?? _skinLevelsCache[key];
+    final typeKey = (itemTypeId ?? '').toLowerCase();
 
-    if (item == null) {
+    // 1. Player Card
+    if (typeKey == '3f296326-62c0-4f96-94e9-77c08096fc88' || _playerCardsCache.containsKey(key)) {
+      final card = _playerCardsCache[key];
+      final name = (card?['displayName'] ?? 'Player Card').toString();
+      final icon = (card?['displayIcon'] ??
+              card?['smallArt'] ??
+              card?['largeArt'] ??
+              'https://media.valorant-api.com/playercards/$itemUuid/displayicon.png')
+          .toString();
       return SkinItem(
         uuid: itemUuid,
-        displayName: 'Valorant Skin',
+        displayName: name,
+        displayIcon: icon,
+        cost: cost,
+      );
+    }
+
+    // 2. Gun Buddy / Buddy Level
+    if (typeKey == 'dd3b2834-433a-4ba3-727b-d8912a428447' || _buddiesCache.containsKey(key)) {
+      final buddy = _buddiesCache[key];
+      final name = (buddy?['displayName'] ?? 'Gun Buddy').toString();
+      final icon = (buddy?['displayIcon'] ??
+              'https://media.valorant-api.com/buddies/$itemUuid/displayicon.png')
+          .toString();
+      return SkinItem(
+        uuid: itemUuid,
+        displayName: name,
+        displayIcon: icon,
+        cost: cost,
+      );
+    }
+
+    // 3. Spray
+    if (typeKey == 'd5f12124-92a5-43ac-9238-631143a0425b' || _spraysCache.containsKey(key)) {
+      final spray = _spraysCache[key];
+      final name = (spray?['displayName'] ?? 'Spray').toString();
+      final icon = (spray?['fullTransparentIcon'] ??
+              spray?['displayIcon'] ??
+              'https://media.valorant-api.com/sprays/$itemUuid/fulltransparenticon.png')
+          .toString();
+      return SkinItem(
+        uuid: itemUuid,
+        displayName: name,
+        displayIcon: icon,
+        cost: cost,
+      );
+    }
+
+    // 4. Title
+    if (typeKey == 'de7ea82c-446a-44b0-9900-47bf2b51206d' || _playerTitlesCache.containsKey(key)) {
+      final title = _playerTitlesCache[key];
+      final name = (title?['titleText'] ?? title?['displayName'] ?? 'Title').toString();
+      return SkinItem(
+        uuid: itemUuid,
+        displayName: name,
         displayIcon: '',
         cost: cost,
       );
     }
 
-    String name = (item['displayName'] ?? 'Valorant Skin').toString();
-    String icon = (item['displayIcon'] ?? item['fullRender'] ?? '').toString();
-    String video = (item['streamedVideo'] ?? '').toString();
+    // 5. Weapon Skin or Level
+    dynamic item = _skinsFullCache[key] ?? _skinLevelsCache[key];
 
-    if (icon.isEmpty && item['parentSkin'] != null) {
-      icon = (item['parentSkin']['displayIcon'] ?? '').toString();
+    if (item != null) {
+      String name = (item['displayName'] ?? 'Valorant Item').toString();
+      String icon = (item['displayIcon'] ?? item['fullRender'] ?? '').toString();
+      String video = (item['streamedVideo'] ?? '').toString();
+
+      if (icon.isEmpty && item['parentSkin'] != null) {
+        icon = (item['parentSkin']['displayIcon'] ?? '').toString();
+      }
+
+      String clean = name
+          .replaceAll(RegExp(r'\s+Level\s+\d+.*$', caseSensitive: false), '')
+          .replaceAll(RegExp(r'\s+Variant\s+\d+.*$', caseSensitive: false), '')
+          .trim();
+
+      return SkinItem(
+        uuid: itemUuid,
+        displayName: name,
+        displayIcon: icon,
+        cost: cost,
+        videoUrl: video,
+        cleanName: clean,
+      );
     }
-
-    String clean = name
-        .replaceAll(RegExp(r'\s+Level\s+\d+.*$', caseSensitive: false), '')
-        .replaceAll(RegExp(r'\s+Variant\s+\d+.*$', caseSensitive: false), '')
-        .trim();
 
     return SkinItem(
       uuid: itemUuid,
-      displayName: name,
-      displayIcon: icon,
+      displayName: 'Valorant Item',
+      displayIcon: '',
       cost: cost,
-      videoUrl: video,
-      cleanName: clean,
     );
   }
 

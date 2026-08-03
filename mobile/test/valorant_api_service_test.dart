@@ -14,7 +14,7 @@ void main() {
   group('ValorantApiService.resolveSkinItem', () {
     test('falls back to a neutral placeholder for unknown skins', () {
       final skin = ValorantApiService.resolveSkinItem('not-a-real-uuid', 1775);
-      expect(skin.displayName, 'Valorant Skin');
+      expect(skin.displayName, 'Valorant Item');
       expect(skin.cost, 1775);
       expect(skin.displayIcon, '');
     });

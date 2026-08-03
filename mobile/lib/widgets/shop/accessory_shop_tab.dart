@@ -78,10 +78,16 @@ class _AccessoryCard extends StatelessWidget {
                 const Icon(Icons.stars, color: Colors.white24, size: 40),
               Row(
                 children: [
-                  const Icon(Icons.diamond_outlined, color: Colors.white70, size: 16),
-                  const SizedBox(width: 4),
+                  CachedNetworkImage(
+                    imageUrl: 'https://media.valorant-api.com/currencies/85ca954a-41f2-ce94-9b45-8ca3dd39a00d/displayicon.png',
+                    width: 16,
+                    height: 16,
+                    fit: BoxFit.contain,
+                    errorWidget: (context, url, error) => const Icon(Icons.stars, color: Colors.white70, size: 14),
+                  ),
+                  const SizedBox(width: 6),
                   Text(
-                    '${accessory.costKC}',
+                    '${accessory.costKC} KC',
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,

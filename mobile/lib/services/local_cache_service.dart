@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/saved_account.dart';
 import 'riot_api_client.dart';
 
 /// Local persistence.
@@ -12,6 +13,8 @@ import 'riot_api_client.dart';
 class LocalCacheService {
   static const String _profileKey = 'cached_user_profile';
   static const String _secureTokenKey = 'riot_auth_tokens';
+  static const String _savedAccountsKey = 'saved_riot_accounts';
+  static const String _activePuuidKey = 'active_puuid';
 
   /// Legacy plaintext token key from pre-1.0 builds; wiped on first access.
   static const String _legacyTokenKey = 'cached_user_tokens';
@@ -21,6 +24,8 @@ class LocalCacheService {
   static const int _tokenTtlMs = 3300000;
 
   static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
+
+  // --- Single-Token & Legacy Methods ---
 
   static Future<void> saveTokens(String accessToken, String idToken) async {
     try {
@@ -99,4 +104,108 @@ class LocalCacheService {
     }
     return null;
   }
+
+  // --- Multi-Account Management Methods ---
+
+  static Future<List<SavedAccount>> getSavedAccounts() async {
+    try {
+      final str = await _secureStorage.read(key: _savedAccountsKey);
+      if (str != null && str.isNotEmpty) {
+        final List<dynamic> list = jsonDecode(str);
+        return list.map((item) => SavedAccount.fromJson(item as Map<String, dynamic>)).toList();
+      }
+    } catch (e) {
+      RiotApiClient.logError('getSavedAccounts', e);
+    }
+    return [];
+  }
+
+  static Future<void> saveAccount(SavedAccount account) async {
+    try {
+      final accounts = await getSavedAccounts();
+      final index = accounts.indexWhere((a) => a.puuid == account.puuid);
+      if (index >= 0) {
+        accounts[index] = account;
+      } else {
+        accounts.add(account);
+      }
+      final jsonList = accounts.map((a) => a.toJson()).toList();
+      await _secureStorage.write(key: _savedAccountsKey, value: jsonEncode(jsonList));
+
+      // Mark as active
+      await setActivePuuid(account.puuid);
+      await saveTokens(account.accessToken, account.idToken);
+    } catch (e) {
+      RiotApiClient.logError('saveAccount', e);
+    }
+  }
+
+  static Future<String?> getActivePuuid() async {
+    try {
+      return await _secureStorage.read(key: _activePuuidKey);
+    } catch (e) {
+      RiotApiClient.logError('getActivePuuid', e);
+      return null;
+    }
+  }
+
+  static Future<void> setActivePuuid(String puuid) async {
+    try {
+      await _secureStorage.write(key: _activePuuidKey, value: puuid);
+      final accounts = await getSavedAccounts();
+      final active = accounts.firstWhere((a) => a.puuid == puuid, orElse: () => accounts.first);
+      await saveTokens(active.accessToken, active.idToken);
+    } catch (e) {
+      RiotApiClient.logError('setActivePuuid', e);
+    }
+  }
+
+  static Future<SavedAccount?> getActiveAccount() async {
+    try {
+      final accounts = await getSavedAccounts();
+      if (accounts.isEmpty) return null;
+
+      final activePuuid = await getActivePuuid();
+      if (activePuuid != null && activePuuid.isNotEmpty) {
+        final match = accounts.where((a) => a.puuid == activePuuid).firstOrNull;
+        if (match != null) return match;
+      }
+      return accounts.first;
+    } catch (e) {
+      RiotApiClient.logError('getActiveAccount', e);
+      return null;
+    }
+  }
+
+  static Future<void> removeAccount(String puuid) async {
+    try {
+      final accounts = await getSavedAccounts();
+      accounts.removeWhere((a) => a.puuid == puuid);
+      final jsonList = accounts.map((a) => a.toJson()).toList();
+      await _secureStorage.write(key: _savedAccountsKey, value: jsonEncode(jsonList));
+
+      final activePuuid = await getActivePuuid();
+      if (activePuuid == puuid) {
+        if (accounts.isNotEmpty) {
+          await setActivePuuid(accounts.first.puuid);
+        } else {
+          await _secureStorage.delete(key: _activePuuidKey);
+          await clearTokens();
+        }
+      }
+    } catch (e) {
+      RiotApiClient.logError('removeAccount', e);
+    }
+  }
+
+  static Future<void> clearAllAccounts() async {
+    try {
+      await _secureStorage.delete(key: _savedAccountsKey);
+      await _secureStorage.delete(key: _activePuuidKey);
+      await clearTokens();
+    } catch (e) {
+      RiotApiClient.logError('clearAllAccounts', e);
+    }
+  }
 }
+
