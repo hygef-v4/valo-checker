@@ -11,6 +11,7 @@ class NightMarketTab extends StatelessWidget {
   final List<Map<String, dynamic>> items;
   final OwnedSkinIndex ownedIndex;
   final int remainingSeconds;
+  final Set<String> wishlist;
   final ValueChanged<SkinItem> onSkinTap;
 
   const NightMarketTab({
@@ -18,6 +19,7 @@ class NightMarketTab extends StatelessWidget {
     required this.items,
     required this.ownedIndex,
     required this.remainingSeconds,
+    this.wishlist = const {},
     required this.onSkinTap,
   });
 
@@ -41,6 +43,7 @@ class NightMarketTab extends StatelessWidget {
             final original = item['originalCost'] as int? ?? 0;
             final discount = item['discountPercent'] as int? ?? 0;
             final isOwned = ownedIndex.contains(skin);
+            final isWishlisted = wishlist.contains(skin.uuid);
 
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
@@ -49,6 +52,7 @@ class NightMarketTab extends StatelessWidget {
                 originalCost: original,
                 discountPercent: discount,
                 isOwned: isOwned,
+                isWishlisted: isWishlisted,
                 onTap: () => onSkinTap(skin),
               ),
             );
@@ -64,6 +68,7 @@ class _NightMarketCard extends StatelessWidget {
   final int originalCost;
   final int discountPercent;
   final bool isOwned;
+  final bool isWishlisted;
   final VoidCallback onTap;
 
   const _NightMarketCard({
@@ -71,6 +76,7 @@ class _NightMarketCard extends StatelessWidget {
     required this.originalCost,
     required this.discountPercent,
     required this.isOwned,
+    this.isWishlisted = false,
     required this.onTap,
   });
 
@@ -90,13 +96,22 @@ class _NightMarketCard extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  skin.parentName,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        skin.parentName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ),
+                    if (isWishlisted)
+                      const Icon(Icons.favorite, color: AppColors.primary, size: 20),
+                  ],
                 ),
                 const Spacer(),
                 Row(

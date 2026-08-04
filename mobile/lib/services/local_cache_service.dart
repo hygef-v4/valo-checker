@@ -207,5 +207,51 @@ class LocalCacheService {
       RiotApiClient.logError('clearAllAccounts', e);
     }
   }
+
+  // --- Wishlist Persistence Methods ---
+
+  static String _wishlistKey(String puuid) => 'wishlist_$puuid';
+
+  static Future<Set<String>> getWishlist(String puuid) async {
+    if (puuid.isEmpty) return {};
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_wishlistKey(puuid));
+      if (list != null) {
+        return list.toSet();
+      }
+    } catch (e) {
+      RiotApiClient.logError('getWishlist', e);
+    }
+    return {};
+  }
+
+  static Future<bool> toggleWishlist(String puuid, String skinUuid) async {
+    if (puuid.isEmpty || skinUuid.isEmpty) return false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final set = (await getWishlist(puuid)).toSet();
+      final key = _wishlistKey(puuid);
+      bool isAdded;
+      if (set.contains(skinUuid)) {
+        set.remove(skinUuid);
+        isAdded = false;
+      } else {
+        set.add(skinUuid);
+        isAdded = true;
+      }
+      await prefs.setStringList(key, set.toList());
+      return isAdded;
+    } catch (e) {
+      RiotApiClient.logError('toggleWishlist', e);
+      return false;
+    }
+  }
+
+  static Future<bool> isWishlisted(String puuid, String skinUuid) async {
+    if (puuid.isEmpty || skinUuid.isEmpty) return false;
+    final wishlist = await getWishlist(puuid);
+    return wishlist.contains(skinUuid);
+  }
 }
 

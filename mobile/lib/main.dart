@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'screens/shop_screen.dart';
+import 'services/notification_service.dart';
 import 'theme/app_colors.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await NotificationService.initialize();
   runApp(const ValoCheckApp());
 }
 

@@ -12,6 +12,7 @@ import '../models/saved_account.dart';
 import '../models/skin_item.dart';
 import '../models/user_profile.dart';
 import '../services/local_cache_service.dart';
+import '../services/notification_service.dart';
 import '../services/riot_api_client.dart';
 import '../services/riot_auth_service.dart';
 import '../theme/app_colors.dart';
@@ -24,6 +25,7 @@ import '../widgets/match/match_details_modal.dart';
 import '../widgets/profile/agents_tab.dart';
 import '../widgets/profile/career_tab.dart';
 import '../widgets/profile/collection_tab.dart';
+import '../widgets/profile/weapons_tab.dart';
 import '../widgets/shop/accessory_shop_tab.dart';
 import '../widgets/shop/bundles_tab.dart';
 import '../widgets/shop/daily_shop_tab.dart';
@@ -41,10 +43,12 @@ class ShopScreen extends StatefulWidget {
 
 class _ShopScreenState extends State<ShopScreen> {
   static const _shopSubTabs = ['DAILY SHOP', 'ACCESSORY SHOP', 'NIGHT MARKET', 'BUNDLES'];
-  static const _profileSubTabs = ['COLLECTION', 'AGENTS', 'CAREER'];
+  static const _explorerSubTabs = ['WEAPONS', 'AGENTS'];
+  static const _profileSubTabs = ['COLLECTION', 'CAREER'];
 
-  int _currentNavIndex = 0; // 0: Shop, 1: Profile, 2: Accounts
+  int _currentNavIndex = 0; // 0: Shop, 1: Explorer, 2: Profile, 3: Accounts
   int _shopSubTab = 0;
+  int _explorerSubTab = 0;
   int _profileSubTab = 0;
 
   List<SavedAccount> _savedAccounts = [];
@@ -66,12 +70,42 @@ class _ShopScreenState extends State<ShopScreen> {
   List<MatchSummary> _matchHistory = [];
   List<QuestItem> _quests = [];
   Set<String> _ownedAgents = {};
+  Set<String> _wishlist = {};
   int _selectedAgentIndex = 0;
 
   int _remainingSeconds = 0;
   int _nightMarketRemainingSeconds = 0;
   int _accessoryRemainingSeconds = 0;
   Timer? _timer;
+
+  Future<void> _handleToggleWishlist(String skinUuid) async {
+    final puuid = _profile?.puuid ?? _activePuuid ?? '';
+    if (puuid.isEmpty) return;
+    await LocalCacheService.toggleWishlist(puuid, skinUuid);
+    final updated = await LocalCacheService.getWishlist(puuid);
+    if (!mounted) return;
+    setState(() {
+      _wishlist = updated;
+    });
+
+    if (updated.contains(skinUuid)) {
+      final matchingDaily = _dailySkins.where((s) => s.uuid == skinUuid).firstOrNull;
+      if (matchingDaily != null) {
+        NotificationService.showNotification(
+          id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+          title: '🎉 Wishlist Item Available!',
+          body: '${matchingDaily.parentName} is in your Daily Shop today!',
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('🎉 ${matchingDaily.parentName} is available in your Daily Shop today!'),
+            backgroundColor: AppColors.primary,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -225,6 +259,7 @@ class _ShopScreenState extends State<ShopScreen> {
     _matchHistory = [];
     _quests = [];
     _ownedAgents = {};
+    _wishlist = {};
     _rankInfo = null;
   }
 
@@ -241,8 +276,11 @@ class _ShopScreenState extends State<ShopScreen> {
       final data = await RiotAuthService.fetchStorefrontData(accessToken, idToken);
       if (!mounted) return;
       final inventory = data['inventory'] as List<SkinItem>;
+      final profile = data['profile'] as UserProfile;
+      final wishlist = await LocalCacheService.getWishlist(profile.puuid);
       setState(() {
-        _profile = data['profile'] as UserProfile;
+        _profile = profile;
+        _wishlist = wishlist;
         _dailySkins = data['dailySkins'] as List<SkinItem>;
         _nightMarketSkins = data['nightMarket'] as List<Map<String, dynamic>>;
         _bundles = data['bundles'] as List<BundleItem>;
@@ -258,6 +296,15 @@ class _ShopScreenState extends State<ShopScreen> {
         _accessoryRemainingSeconds = data['accessoryRemainingSeconds'] as int? ?? 0;
       });
       _startCountdown();
+      final matchingWishlist = _dailySkins.where((s) => _wishlist.contains(s.uuid)).toList();
+      if (matchingWishlist.isNotEmpty) {
+        final names = matchingWishlist.map((s) => s.parentName).join(', ');
+        NotificationService.showNotification(
+          id: 888,
+          title: '🎉 Wishlist Item Available!',
+          body: '$names is in your Daily Shop today!',
+        );
+      }
       await LocalCacheService.saveTokens(accessToken, idToken);
       if (_profile != null) {
         final saved = SavedAccount(
@@ -332,7 +379,13 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   void _showSkinDetailModal(SkinItem skin) {
-    SkinDetailModal.show(context, skin);
+    final isLiked = _wishlist.contains(skin.uuid);
+    SkinDetailModal.show(
+      context,
+      skin,
+      isWishlisted: isLiked,
+      onToggleWishlist: () => _handleToggleWishlist(skin.uuid),
+    );
   }
 
   void _showMatchDetailsModal(MatchSummary match) {
@@ -372,6 +425,11 @@ class _ShopScreenState extends State<ShopScreen> {
                   icon: Icon(Icons.shopping_basket_outlined),
                   activeIcon: Icon(Icons.shopping_basket, color: AppColors.primary),
                   label: 'Shop',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.explore_outlined),
+                  activeIcon: Icon(Icons.explore, color: AppColors.primary),
+                  label: 'Explorer',
                 ),
                 BottomNavigationBarItem(
                   icon: Icon(Icons.person_outline),
@@ -534,8 +592,10 @@ class _ShopScreenState extends State<ShopScreen> {
   Widget _buildActiveMainTab() {
     switch (_currentNavIndex) {
       case 1:
-        return _buildProfileMainTab();
+        return _buildExplorerMainTab();
       case 2:
+        return _buildProfileMainTab();
+      case 3:
         return AccountsTab(
           accounts: _savedAccounts,
           activePuuid: _activePuuid ?? _profile?.puuid,
@@ -565,6 +625,7 @@ class _ShopScreenState extends State<ShopScreen> {
           items: _nightMarketSkins,
           ownedIndex: _ownedIndex,
           remainingSeconds: _nightMarketRemainingSeconds,
+          wishlist: _wishlist,
           onSkinTap: _showSkinDetailModal,
         );
         break;
@@ -581,6 +642,7 @@ class _ShopScreenState extends State<ShopScreen> {
           skins: _dailySkins,
           ownedIndex: _ownedIndex,
           remainingSeconds: _remainingSeconds,
+          wishlist: _wishlist,
           onSkinTap: _showSkinDetailModal,
         );
     }
@@ -606,9 +668,9 @@ class _ShopScreenState extends State<ShopScreen> {
     );
   }
 
-  Widget _buildProfileMainTab() {
+  Widget _buildExplorerMainTab() {
     Widget content;
-    switch (_profileSubTab) {
+    switch (_explorerSubTab) {
       case 1:
         content = AgentsTab(
           ownedAgents: _ownedAgents,
@@ -616,7 +678,39 @@ class _ShopScreenState extends State<ShopScreen> {
           onAgentSelected: (index) => setState(() => _selectedAgentIndex = index),
         );
         break;
-      case 2:
+      case 0:
+      default:
+        content = WeaponsTab(
+          wishlist: _wishlist,
+          onToggleWishlist: _handleToggleWishlist,
+        );
+    }
+
+    return Column(
+      children: [
+        TopHeader(profile: _profile, title: 'EXPLORER'),
+        SubTabBar(
+          tabs: _explorerSubTabs,
+          selectedIndex: _explorerSubTab,
+          onTabSelected: (index) => setState(() => _explorerSubTab = index),
+        ),
+        const Divider(color: Colors.white10, height: 1),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _onRefresh,
+            color: AppColors.primary,
+            backgroundColor: AppColors.surface,
+            child: content,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProfileMainTab() {
+    Widget content;
+    switch (_profileSubTab) {
+      case 1:
         content = CareerTab(
           rankInfo: _rankInfo,
           quests: _quests,

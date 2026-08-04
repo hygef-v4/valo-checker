@@ -6,13 +6,22 @@ import '../../services/valorant_api_service.dart';
 
 class SkinDetailModal extends StatefulWidget {
   final SkinItem skin;
+  final bool isWishlisted;
+  final VoidCallback? onToggleWishlist;
 
   const SkinDetailModal({
     super.key,
     required this.skin,
+    this.isWishlisted = false,
+    this.onToggleWishlist,
   });
 
-  static void show(BuildContext context, SkinItem skin) {
+  static void show(
+    BuildContext context,
+    SkinItem skin, {
+    bool isWishlisted = false,
+    VoidCallback? onToggleWishlist,
+  }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -20,7 +29,11 @@ class SkinDetailModal extends StatefulWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => SkinDetailModal(skin: skin),
+      builder: (context) => SkinDetailModal(
+        skin: skin,
+        isWishlisted: isWishlisted,
+        onToggleWishlist: onToggleWishlist,
+      ),
     );
   }
 
@@ -31,12 +44,14 @@ class SkinDetailModal extends StatefulWidget {
 class _SkinDetailModalState extends State<SkinDetailModal> {
   late String _currentIcon;
   late String _currentVideo;
+  late bool _isWishlisted;
 
   @override
   void initState() {
     super.initState();
     _currentIcon = widget.skin.displayIcon;
     _currentVideo = widget.skin.videoUrl;
+    _isWishlisted = widget.isWishlisted;
   }
 
   void _playDemoVideo(BuildContext context, String title, String videoUrl) {
@@ -143,15 +158,36 @@ class _SkinDetailModalState extends State<SkinDetailModal> {
               ),
             ),
             const SizedBox(height: 16),
-            Text(
-              skin.parentName.toUpperCase(),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                fontSize: 20,
-                letterSpacing: 1.2,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(width: 32),
+                Expanded(
+                  child: Text(
+                    skin.parentName.toUpperCase(),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 20,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _isWishlisted = !_isWishlisted;
+                    });
+                    widget.onToggleWishlist?.call();
+                  },
+                  icon: Icon(
+                    _isWishlisted ? Icons.favorite : Icons.favorite_border,
+                    color: _isWishlisted ? const Color(0xFFFF4655) : Colors.white38,
+                    size: 24,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             if (_currentIcon.isNotEmpty)

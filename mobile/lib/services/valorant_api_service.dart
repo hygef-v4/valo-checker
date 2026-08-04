@@ -18,6 +18,7 @@ class ValorantApiService {
   static final Map<String, dynamic> _agentsRawCache = {};
   static final Map<String, Map<String, String>> _mapsCache = {};
   static final Map<String, Map<String, String>> _weaponsCache = {};
+  static final Map<String, Map<String, String>> _skinToWeaponMap = {};
   static final Map<String, dynamic> _missionsCache = {};
   static bool _isLoaded = false;
 
@@ -164,10 +165,42 @@ class ValorantApiService {
         final weaponsData = jsonDecode(responses[11].body)['data'] as List;
         for (var w in weaponsData) {
           final wUuid = (w['uuid'] ?? '').toString().toLowerCase();
+          final wName = (w['displayName'] ?? 'Weapon').toString();
+          final rawCategory = (w['category'] ?? '').toString();
+
+          String category = 'Other';
+          if (rawCategory.contains('Rifle')) {
+            category = 'Rifles';
+          } else if (rawCategory.contains('Sidearm')) {
+            category = 'Sidearms';
+          } else if (rawCategory.contains('Sniper')) {
+            category = 'Snipers';
+          } else if (rawCategory.contains('SMG')) {
+            category = 'SMGs';
+          } else if (rawCategory.contains('Shotgun')) {
+            category = 'Shotguns';
+          } else if (rawCategory.contains('Heavy')) {
+            category = 'Heavies';
+          } else if (rawCategory.contains('Melee') || wName == 'Melee') {
+            category = 'Melee';
+          }
+
           _weaponsCache[wUuid] = {
-            'displayName': (w['displayName'] ?? 'Weapon').toString(),
+            'displayName': wName,
             'displayIcon': (w['killStreamIcon'] ?? w['displayIcon'] ?? '').toString(),
+            'category': category,
           };
+
+          final skins = w['skins'] as List? ?? [];
+          for (var skin in skins) {
+            final skinUuid = (skin['uuid'] ?? '').toString().toLowerCase();
+            if (skinUuid.isNotEmpty) {
+              _skinToWeaponMap[skinUuid] = {
+                'weaponName': wName,
+                'category': category,
+              };
+            }
+          }
         }
       }
 
@@ -380,6 +413,13 @@ class ValorantApiService {
       String icon = (item['displayIcon'] ?? item['fullRender'] ?? '').toString();
       String video = (item['streamedVideo'] ?? '').toString();
 
+      String canonicalUuid = itemUuid;
+      if (item['parentSkin'] != null && item['parentSkin']['uuid'] != null) {
+        canonicalUuid = item['parentSkin']['uuid'].toString();
+      } else if (item['uuid'] != null) {
+        canonicalUuid = item['uuid'].toString();
+      }
+
       if (icon.isEmpty && item['parentSkin'] != null) {
         icon = (item['parentSkin']['displayIcon'] ?? '').toString();
       }
@@ -390,7 +430,7 @@ class ValorantApiService {
           .trim();
 
       return SkinItem(
-        uuid: itemUuid,
+        uuid: canonicalUuid,
         displayName: name,
         displayIcon: icon,
         cost: cost,
@@ -524,5 +564,125 @@ class ValorantApiService {
       return 'https://media.valorant-api.com/playercards/$cardUuid/displayicon.png';
     }
     return '';
+  }
+
+  static List<Map<String, dynamic>>? _catalogMemoizedCache;
+
+  static List<Map<String, dynamic>> getAllSkinsCatalog() {
+    if (_catalogMemoizedCache != null && _catalogMemoizedCache!.isNotEmpty) {
+      return _catalogMemoizedCache!;
+    }
+
+    final List<Map<String, dynamic>> result = [];
+    final Set<String> processedUuids = {};
+
+    _skinsFullCache.forEach((uuid, skin) {
+      if (skin['parentSkin'] != null) return;
+      if (processedUuids.contains(uuid)) return;
+      processedUuids.add(uuid);
+
+      final displayName = (skin['displayName'] ?? '').toString();
+      if (displayName.isEmpty ||
+          displayName.toLowerCase().contains('random') ||
+          displayName.toLowerCase().startsWith('standard')) {
+        return;
+      }
+
+      final icon = (skin['displayIcon'] ?? skin['chromas']?[0]?['displayIcon'] ?? '').toString();
+      final tierUuid = (skin['contentTierUuid'] ?? '').toString().toLowerCase();
+      final tierData = _contentTiersCache[tierUuid];
+
+      final officialMeta = _skinToWeaponMap[uuid];
+      String weaponName = officialMeta?['weaponName'] ?? 'Other';
+      String category = officialMeta?['category'] ?? 'Other';
+
+      if (weaponName == 'Other' || category == 'Other') {
+        final assetPath = (skin['assetPath'] ?? '').toString();
+        if (assetPath.contains('Vandal') || displayName.toLowerCase().contains('vandal')) {
+          weaponName = 'Vandal';
+        } else if (assetPath.contains('Phantom') || displayName.toLowerCase().contains('phantom')) {
+          weaponName = 'Phantom';
+        } else if (assetPath.contains('Operator') || displayName.toLowerCase().contains('operator')) {
+          weaponName = 'Operator';
+        } else if (assetPath.contains('Spectre') || displayName.toLowerCase().contains('spectre')) {
+          weaponName = 'Spectre';
+        } else if (assetPath.contains('Sheriff') || displayName.toLowerCase().contains('sheriff')) {
+          weaponName = 'Sheriff';
+        } else if (assetPath.contains('Ghost') || displayName.toLowerCase().contains('ghost')) {
+          weaponName = 'Ghost';
+        } else if (assetPath.contains('Classic') || displayName.toLowerCase().contains('classic')) {
+          weaponName = 'Classic';
+        } else if (assetPath.contains('Shorty') || displayName.toLowerCase().contains('shorty')) {
+          weaponName = 'Shorty';
+        } else if (assetPath.contains('Frenzy') || displayName.toLowerCase().contains('frenzy')) {
+          weaponName = 'Frenzy';
+        } else if (assetPath.contains('Stinger') || displayName.toLowerCase().contains('stinger')) {
+          weaponName = 'Stinger';
+        } else if (assetPath.contains('Bucky') || displayName.toLowerCase().contains('bucky')) {
+          weaponName = 'Bucky';
+        } else if (assetPath.contains('Judge') || displayName.toLowerCase().contains('judge')) {
+          weaponName = 'Judge';
+        } else if (assetPath.contains('Bulldog') || displayName.toLowerCase().contains('bulldog')) {
+          weaponName = 'Bulldog';
+        } else if (assetPath.contains('Guardian') || displayName.toLowerCase().contains('guardian')) {
+          weaponName = 'Guardian';
+        } else if (assetPath.contains('Marshal') || displayName.toLowerCase().contains('marshal')) {
+          weaponName = 'Marshal';
+        } else if (assetPath.contains('Outlaw') || displayName.toLowerCase().contains('outlaw')) {
+          weaponName = 'Outlaw';
+        } else if (assetPath.contains('Ares') || displayName.toLowerCase().contains('ares')) {
+          weaponName = 'Ares';
+        } else if (assetPath.contains('Odin') || displayName.toLowerCase().contains('odin')) {
+          weaponName = 'Odin';
+        } else if (assetPath.contains('Melee') || displayName.toLowerCase().contains('melee') || displayName.toLowerCase().contains('knife') || displayName.toLowerCase().contains('karambit') || displayName.toLowerCase().contains('dagger') || displayName.toLowerCase().contains('sword') || displayName.toLowerCase().contains('axe') || displayName.toLowerCase().contains('blade')) {
+          weaponName = 'Melee';
+        }
+
+        if (['Vandal', 'Phantom', 'Guardian', 'Bulldog'].contains(weaponName)) {
+          category = 'Rifles';
+        } else if (['Sheriff', 'Ghost', 'Classic', 'Shorty', 'Frenzy'].contains(weaponName)) {
+          category = 'Sidearms';
+        } else if (['Operator', 'Outlaw', 'Marshal'].contains(weaponName)) {
+          category = 'Snipers';
+        } else if (['Spectre', 'Stinger'].contains(weaponName)) {
+          category = 'SMGs';
+        } else if (['Bucky', 'Judge'].contains(weaponName)) {
+          category = 'Shotguns';
+        } else if (['Odin', 'Ares'].contains(weaponName)) {
+          category = 'Heavies';
+        } else if (weaponName == 'Melee') {
+          category = 'Melee';
+        }
+      }
+
+      result.add({
+        'uuid': uuid,
+        'displayName': displayName,
+        'displayIcon': icon,
+        'contentTierUuid': tierUuid,
+        'tierName': (tierData?['displayName'] ?? 'Select').toString(),
+        'tierColor': (tierData?['highlightColor'] ?? 'ff0099e6').toString(),
+        'tierIcon': (tierData?['displayIcon'] ?? '').toString(),
+        'category': category,
+        'weaponName': weaponName,
+        'rawSkin': skin,
+      });
+    });
+
+    _catalogMemoizedCache = result;
+    return result;
+  }
+
+  static List<Map<String, dynamic>> getContentTiersList() {
+    final List<Map<String, dynamic>> tiers = [];
+    _contentTiersCache.forEach((uuid, tier) {
+      tiers.add({
+        'uuid': uuid,
+        'displayName': (tier['displayName'] ?? '').toString(),
+        'displayIcon': (tier['displayIcon'] ?? '').toString(),
+        'highlightColor': (tier['highlightColor'] ?? '').toString(),
+      });
+    });
+    return tiers;
   }
 }

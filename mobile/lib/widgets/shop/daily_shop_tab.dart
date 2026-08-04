@@ -10,6 +10,7 @@ class DailyShopTab extends StatelessWidget {
   final List<SkinItem> skins;
   final OwnedSkinIndex ownedIndex;
   final int remainingSeconds;
+  final Set<String> wishlist;
   final ValueChanged<SkinItem> onSkinTap;
 
   const DailyShopTab({
@@ -17,6 +18,7 @@ class DailyShopTab extends StatelessWidget {
     required this.skins,
     required this.ownedIndex,
     required this.remainingSeconds,
+    this.wishlist = const {},
     required this.onSkinTap,
   });
 
@@ -52,6 +54,7 @@ class DailyShopTab extends StatelessWidget {
             itemBuilder: (context, index) => _SkinCard(
               skin: skins[index],
               isOwned: ownedIndex.contains(skins[index]),
+              isWishlisted: wishlist.contains(skins[index].uuid),
               onTap: () => onSkinTap(skins[index]),
             ),
           ),
@@ -64,9 +67,15 @@ class DailyShopTab extends StatelessWidget {
 class _SkinCard extends StatelessWidget {
   final SkinItem skin;
   final bool isOwned;
+  final bool isWishlisted;
   final VoidCallback onTap;
 
-  const _SkinCard({required this.skin, required this.isOwned, required this.onTap});
+  const _SkinCard({
+    required this.skin,
+    required this.isOwned,
+    this.isWishlisted = false,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -77,19 +86,32 @@ class _SkinCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isWishlisted ? AppColors.primary.withValues(alpha: 0.6) : Colors.transparent,
+            width: isWishlisted ? 1.5 : 0,
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              skin.parentName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    skin.parentName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+                if (isWishlisted)
+                  const Icon(Icons.favorite, color: AppColors.primary, size: 16),
+              ],
             ),
             const SizedBox(height: 4),
             if (isOwned)
