@@ -81,3 +81,10 @@ See `docs/RELEASE_CHECKLIST.md` for the full pre-release checklist.
 ## Privacy
 
 ValoCheck talks directly to Riot endpoints from your device. Your Riot credentials are entered only on Riot's own login page inside the WebView; the app never sees your password. Auth tokens are stored in the platform keystore (Android Keystore / iOS Keychain) and can be wiped with Log Out. No data is sent to any third-party server. If you publish to an app store, host a privacy policy stating the above — stores require one for apps with login.
+
+## License
+
+Copyright (c) 2026 hygef-v4. All Rights Reserved.
+
+This repository is **Source Available** (view-only for educational/personal purposes). You are welcome to inspect the code, but copying, modifying, rebranding, or redistributing this application or its assets without explicit permission is strictly prohibited. See [LICENSE](LICENSE) for full details.
+
