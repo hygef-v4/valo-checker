@@ -86,3 +86,10 @@
 - **Raw Input**: `tiếp tục`
 - **Action**: Workflow setup is successfully finalized and ready for the next development task, feature implementation, or bug fix.
 
+### [2026-08-21T18:15:57+07:00] Documentation Update Request
+- **Phase**: CONSTRUCTION / DOCUMENTATION
+- **Stage**: README Enhancement
+- **Raw Input**: `viết lại readme`
+- **Action**: Rewriting root `README.md` to provide comprehensive, polished project documentation, feature breakdown, architecture map, security overview, setup guide, and AI-DLC artifact links.
+
+
