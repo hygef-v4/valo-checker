@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/match_summary.dart';
 import '../models/saved_account.dart';
 import 'riot_api_client.dart';
 
@@ -252,6 +253,44 @@ class LocalCacheService {
     if (puuid.isEmpty || skinUuid.isEmpty) return false;
     final wishlist = await getWishlist(puuid);
     return wishlist.contains(skinUuid);
+  }
+
+  // --- Match History Cache Methods ---
+
+  static String _matchHistoryKey(String puuid) => 'cached_matches_$puuid';
+
+  static Future<void> saveCachedMatches(String puuid, List<MatchSummary> matches) async {
+    if (puuid.isEmpty || matches.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final trimmed = matches.take(60).map((m) => jsonEncode(m.toJson())).toList();
+      await prefs.setStringList(_matchHistoryKey(puuid), trimmed);
+    } catch (e) {
+      RiotApiClient.logError('saveCachedMatches', e);
+    }
+  }
+
+  static Future<List<MatchSummary>> getCachedMatches(String puuid) async {
+    if (puuid.isEmpty) return [];
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_matchHistoryKey(puuid));
+      if (list != null && list.isNotEmpty) {
+        return list
+            .map((str) {
+              try {
+                return MatchSummary.fromJson(jsonDecode(str) as Map<String, dynamic>);
+              } catch (_) {
+                return null;
+              }
+            })
+            .whereType<MatchSummary>()
+            .toList();
+      }
+    } catch (e) {
+      RiotApiClient.logError('getCachedMatches', e);
+    }
+    return [];
   }
 }
 

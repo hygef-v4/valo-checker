@@ -287,10 +287,16 @@ class _ShopScreenState extends State<ShopScreen> {
         _accessories = data['accessories'] as List<AccessoryItem>;
         _inventory = inventory;
         _ownedIndex = OwnedSkinIndex.fromInventory(inventory);
-        _rankInfo = data['rankInfo'] as RankInfo?;
-        _matchHistory = data['matchHistory'] as List<MatchSummary>;
-        _quests = data['quests'] as List<QuestItem>;
-        _ownedAgents = data['ownedAgents'] as Set<String>? ?? {};
+        _rankInfo = (data['rankInfo'] as RankInfo?) ?? _rankInfo;
+        final newMatches = data['matchHistory'] as List<MatchSummary>? ?? [];
+        if (newMatches.isNotEmpty || _matchHistory.isEmpty) {
+          _matchHistory = newMatches;
+        }
+        final newQuests = data['quests'] as List<QuestItem>? ?? [];
+        if (newQuests.isNotEmpty || _quests.isEmpty) {
+          _quests = newQuests;
+        }
+        _ownedAgents = data['ownedAgents'] as Set<String>? ?? _ownedAgents;
         _remainingSeconds = data['remainingSeconds'] as int? ?? 0;
         _nightMarketRemainingSeconds = data['nightMarketRemainingSeconds'] as int? ?? 0;
         _accessoryRemainingSeconds = data['accessoryRemainingSeconds'] as int? ?? 0;

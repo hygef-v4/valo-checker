@@ -41,6 +41,7 @@ class BundlesTab extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 16),
                 child: _BundleCard(
                   bundle: b,
+                  ownedIndex: effectiveOwnedIndex,
                   onTap: () => BundleDetailModal.show(
                     context,
                     b,
@@ -57,15 +58,22 @@ class BundlesTab extends StatelessWidget {
 
 class _BundleCard extends StatelessWidget {
   final BundleItem bundle;
+  final OwnedSkinIndex ownedIndex;
   final VoidCallback onTap;
 
   const _BundleCard({
     required this.bundle,
+    required this.ownedIndex,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final ownedItems = bundle.items.where((item) => ownedIndex.contains(item)).toList();
+    final int ownedCount = ownedItems.length;
+    final int ownedVpValue = ownedItems.fold(0, (sum, item) => sum + item.cost);
+    final int adjustedCost = (bundle.cost - ownedVpValue).clamp(0, bundle.cost);
+
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -99,9 +107,40 @@ class _BundleCard extends StatelessWidget {
                         ),
                       ),
                       if (bundle.cost > 0)
-                        Text(
-                          '${bundle.cost} VP',
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                        Row(
+                          children: [
+                            if (ownedCount > 0 && adjustedCost < bundle.cost) ...[
+                              Text(
+                                '${bundle.cost} VP',
+                                style: const TextStyle(
+                                  color: Colors.white38,
+                                  fontSize: 11,
+                                  decoration: TextDecoration.lineThrough,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: AppColors.success,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  '$adjustedCost VP',
+                                  style: const TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            ] else
+                              Text(
+                                '${bundle.cost} VP',
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                          ],
                         ),
                     ],
                   ),
@@ -109,7 +148,24 @@ class _BundleCard extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('EXPIRES IN:', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
+                      if (ownedCount > 0)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.success.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '$ownedCount owned (-$ownedVpValue VP)',
+                            style: const TextStyle(
+                              color: AppColors.success,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        )
+                      else
+                        const Text('EXPIRES IN:', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
                       Text(
                         FormatUtils.formatLongTimer(bundle.remainingSeconds),
                         style: const TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.bold, fontFamily: 'monospace'),

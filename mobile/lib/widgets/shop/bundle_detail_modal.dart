@@ -43,6 +43,10 @@ class BundleDetailModal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final maxHeight = MediaQuery.of(context).size.height * 0.85;
+    final ownedItems = bundle.items.where((item) => ownedIndex.contains(item)).toList();
+    final int ownedCount = ownedItems.length;
+    final int ownedVpValue = ownedItems.fold(0, (sum, item) => sum + item.cost);
+    final int adjustedCost = (bundle.cost - ownedVpValue).clamp(0, bundle.cost);
 
     return Container(
       constraints: BoxConstraints(maxHeight: maxHeight),
@@ -106,20 +110,52 @@ class BundleDetailModal extends StatelessWidget {
                             ),
                           ),
                           if (bundle.cost > 0)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                '${bundle.cost} VP',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 14,
-                                ),
-                              ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                if (ownedCount > 0 && adjustedCost < bundle.cost) ...[
+                                  Text(
+                                    '${bundle.cost} VP',
+                                    style: const TextStyle(
+                                      color: Colors.white38,
+                                      fontSize: 12,
+                                      decoration: TextDecoration.lineThrough,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.success,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      '$adjustedCost VP',
+                                      style: const TextStyle(
+                                        color: Colors.black,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ] else
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      '${bundle.cost} VP',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                         ],
                       ),
@@ -148,6 +184,33 @@ class BundleDetailModal extends StatelessWidget {
                           ),
                         ],
                       ),
+                      if (ownedCount > 0) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppColors.success.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.savings_outlined, color: AppColors.success, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'You own $ownedCount item(s). Bundle price reduced by $ownedVpValue VP!',
+                                  style: const TextStyle(
+                                    color: AppColors.success,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 20),
                       Text(
                         'BUNDLE CONTENT (${bundle.items.length})',

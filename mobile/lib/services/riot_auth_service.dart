@@ -10,6 +10,7 @@ import '../models/rank_info.dart';
 import '../models/skin_item.dart';
 import '../models/user_profile.dart';
 import '../utils/json_utils.dart';
+import 'local_cache_service.dart';
 import 'riot_api_client.dart';
 import 'valorant_api_service.dart';
 
@@ -352,7 +353,8 @@ class RiotAuthService {
   }
 
   static Future<List<MatchSummary>> fetchMatchHistory(String accessToken, String entitlementToken, String puuid, String shard) async {
-    final List<MatchSummary> matches = [];
+    final cached = await LocalCacheService.getCachedMatches(puuid);
+    final Map<String, MatchSummary> matchMap = {for (var m in cached) m.matchId: m};
 
     try {
       final headers = await RiotApiClient.playerHeaders(accessToken, entitlementToken);
@@ -362,116 +364,147 @@ class RiotAuthService {
       );
 
       if (historyRes.statusCode != 200) {
-        return matches;
+        final fallbackList = matchMap.values.toList()
+          ..sort((a, b) => b.matchStartTime.compareTo(a.matchStartTime));
+        return fallbackList;
       }
 
       final historyData = jsonDecode(historyRes.body);
       final historyList = historyData['History'] as List? ?? [];
       final recentMatches = historyList.take(matchHistoryCount).toList();
 
-      final detailFutures = recentMatches.map((h) {
-        final matchId = h['MatchID'] ?? '';
-        if (matchId.toString().isEmpty) return Future<http.Response?>.value(null);
-        return RiotApiClient.get(
-          Uri.parse('https://pd.$shard.a.pvp.net/match-details/v1/matches/$matchId'),
-          headers: headers,
-        ).then<http.Response?>((res) => res).catchError((_) => null);
+      // Only request match details for matches NOT yet present in local cache!
+      final missingMatches = recentMatches.where((h) {
+        final mId = (h['MatchID'] ?? '').toString();
+        return mId.isNotEmpty && !matchMap.containsKey(mId);
       }).toList();
 
-      final responses = await Future.wait(detailFutures);
+      if (missingMatches.isNotEmpty) {
+        final detailFutures = missingMatches.map((h) {
+          final matchId = h['MatchID'] ?? '';
+          if (matchId.toString().isEmpty) return Future<http.Response?>.value(null);
+          return RiotApiClient.get(
+            Uri.parse('https://pd.$shard.a.pvp.net/match-details/v1/matches/$matchId'),
+            headers: headers,
+          ).then<http.Response?>((res) => res).catchError((_) => null);
+        }).toList();
 
-      // Resolve display names for every player we saw, in batches of 30.
-      final Set<String> puuidSet = {};
-      for (var matchRes in responses) {
-        if (matchRes != null && matchRes.statusCode == 200) {
-          try {
-            final detailData = jsonDecode(matchRes.body);
-            final players = detailData['players'] as List? ?? [];
-            for (var p in players) {
-              final s = (p['subject'] ?? '').toString();
-              if (s.isNotEmpty) puuidSet.add(s);
+        final responses = await Future.wait(detailFutures);
+
+        // Resolve display names for every player seen in newly fetched matches
+        final Set<String> puuidSet = {};
+        for (var matchRes in responses) {
+          if (matchRes != null && matchRes.statusCode == 200) {
+            try {
+              final detailData = jsonDecode(matchRes.body);
+              final players = detailData['players'] as List? ?? [];
+              for (var p in players) {
+                final s = (p['subject'] ?? '').toString();
+                if (s.isNotEmpty) puuidSet.add(s);
+              }
+            } catch (e) {
+              RiotApiClient.logError('fetchMatchHistory/parsePlayers', e);
             }
-          } catch (e) {
-            RiotApiClient.logError('fetchMatchHistory/parsePlayers', e);
+          }
+        }
+
+        final resolvedNames = puuidSet.isNotEmpty
+            ? await _resolvePlayerNames(headers, shard, puuidSet)
+            : <String, Map<String, String>>{};
+
+        for (var matchRes in responses) {
+          if (matchRes == null || matchRes.statusCode != 200) continue;
+
+          final detailData = jsonDecode(matchRes.body);
+          final matchInfo = detailData['matchInfo'];
+          final players = detailData['players'] as List? ?? [];
+          final teams = detailData['teams'] as List? ?? [];
+
+          for (var p in players) {
+            final sub = (p['subject'] ?? '').toString();
+            if (resolvedNames.containsKey(sub)) {
+              p['gameName'] = resolvedNames[sub]!['gameName'];
+              p['tagLine'] = resolvedNames[sub]!['tagLine'];
+            }
+          }
+
+          final mapId = matchInfo?['mapId'] ?? '';
+          final queueId = (matchInfo?['queueID'] ?? '').toString();
+          final rawMode = (matchInfo?['gameMode'] ?? 'Competitive').toString();
+          final modeStr = queueId.isNotEmpty ? queueId : rawMode.split('/').last;
+          final gameStartTime = matchInfo?['gameStartMillis'] ?? 0;
+
+          final playerObj = firstWhereOrNull(players, (p) => p['subject'] == puuid);
+          if (playerObj == null) continue;
+
+          final playerTeam = playerObj['teamId'];
+          final characterId = playerObj['characterId'] ?? '';
+          final stats = playerObj['stats'];
+
+          final kills = stats?['kills'] ?? 0;
+          final deaths = stats?['deaths'] ?? 0;
+          final assists = stats?['assists'] ?? 0;
+
+          final teamObj = firstWhereOrNull(teams, (t) => t['teamId'] == playerTeam);
+
+          final isWon = teamObj?['won'] ?? false;
+          final roundsWon = teamObj?['roundsWon'] ?? 0;
+
+          final enemyTeam = firstWhereOrNull(teams, (t) => t['teamId'] != playerTeam);
+          final roundsLost = enemyTeam?['roundsWon'] ?? 0;
+
+          int topScore = 0;
+          for (var p in players) {
+            final s = p['stats']?['score'] ?? 0;
+            if (s > topScore) topScore = s;
+          }
+          final isMvp = (stats?['score'] ?? 0) >= topScore && topScore > 0;
+
+          final agentMeta = ValorantApiService.resolveAgent(characterId.toString());
+          final mapMeta = ValorantApiService.resolveMap(mapId.toString());
+          final seasonId = (matchInfo?['seasonId'] ?? '').toString();
+          final seasonMeta = ValorantApiService.resolveSeason(seasonId);
+
+          final summary = MatchSummary(
+            matchId: (matchInfo?['matchId'] ?? '').toString(),
+            mapName: mapMeta['displayName']!,
+            mapIcon: mapMeta['splash']!,
+            agentName: agentMeta['displayName']!,
+            agentIcon: agentMeta['displayIcon']!,
+            gameMode: modeStr,
+            queueId: queueId,
+            seasonId: seasonId,
+            seasonName: seasonMeta['displayName'] ?? '',
+            isVictory: isWon,
+            scoreText: '$roundsWon - $roundsLost',
+            kills: kills,
+            deaths: deaths,
+            assists: assists,
+            isMvp: isMvp,
+            matchStartTime: gameStartTime,
+            rawMatchDetails: detailData as Map<String, dynamic>?,
+          );
+
+          if (summary.matchId.isNotEmpty) {
+            matchMap[summary.matchId] = summary;
           }
         }
       }
 
-      final resolvedNames = await _resolvePlayerNames(headers, shard, puuidSet);
+      final sortedMatches = matchMap.values.toList()
+        ..sort((a, b) => b.matchStartTime.compareTo(a.matchStartTime));
 
-      for (var matchRes in responses) {
-        if (matchRes == null || matchRes.statusCode != 200) continue;
+      // Persist to local cache so matches are never lost across restarts/tab-switches
+      await LocalCacheService.saveCachedMatches(puuid, sortedMatches);
 
-        final detailData = jsonDecode(matchRes.body);
-        final matchInfo = detailData['matchInfo'];
-        final players = detailData['players'] as List? ?? [];
-        final teams = detailData['teams'] as List? ?? [];
-
-        for (var p in players) {
-          final sub = (p['subject'] ?? '').toString();
-          if (resolvedNames.containsKey(sub)) {
-            p['gameName'] = resolvedNames[sub]!['gameName'];
-            p['tagLine'] = resolvedNames[sub]!['tagLine'];
-          }
-        }
-
-        final mapId = matchInfo?['mapId'] ?? '';
-        final queueId = (matchInfo?['queueID'] ?? '').toString();
-        final rawMode = (matchInfo?['gameMode'] ?? 'Competitive').toString();
-        final modeStr = queueId.isNotEmpty ? queueId : rawMode.split('/').last;
-        final gameStartTime = matchInfo?['gameStartMillis'] ?? 0;
-
-        final playerObj = firstWhereOrNull(players, (p) => p['subject'] == puuid);
-        if (playerObj == null) continue;
-
-        final playerTeam = playerObj['teamId'];
-        final characterId = playerObj['characterId'] ?? '';
-        final stats = playerObj['stats'];
-
-        final kills = stats?['kills'] ?? 0;
-        final deaths = stats?['deaths'] ?? 0;
-        final assists = stats?['assists'] ?? 0;
-
-        final teamObj = firstWhereOrNull(teams, (t) => t['teamId'] == playerTeam);
-
-        final isWon = teamObj?['won'] ?? false;
-        final roundsWon = teamObj?['roundsWon'] ?? 0;
-
-        final enemyTeam = firstWhereOrNull(teams, (t) => t['teamId'] != playerTeam);
-        final roundsLost = enemyTeam?['roundsWon'] ?? 0;
-
-        int topScore = 0;
-        for (var p in players) {
-          final s = p['stats']?['score'] ?? 0;
-          if (s > topScore) topScore = s;
-        }
-        final isMvp = (stats?['score'] ?? 0) >= topScore && topScore > 0;
-
-        final agentMeta = ValorantApiService.resolveAgent(characterId.toString());
-        final mapMeta = ValorantApiService.resolveMap(mapId.toString());
-
-        matches.add(MatchSummary(
-          matchId: (matchInfo?['matchId'] ?? '').toString(),
-          mapName: mapMeta['displayName']!,
-          mapIcon: mapMeta['splash']!,
-          agentName: agentMeta['displayName']!,
-          agentIcon: agentMeta['displayIcon']!,
-          gameMode: modeStr,
-          isVictory: isWon,
-          scoreText: '$roundsWon - $roundsLost',
-          kills: kills,
-          deaths: deaths,
-          assists: assists,
-          isMvp: isMvp,
-          matchStartTime: gameStartTime,
-          rawMatchDetails: detailData as Map<String, dynamic>?,
-        ));
-      }
+      return sortedMatches;
     } catch (e) {
       RiotApiClient.logError('fetchMatchHistory', e);
     }
 
-    return matches;
+    final fallback = matchMap.values.toList()
+      ..sort((a, b) => b.matchStartTime.compareTo(a.matchStartTime));
+    return fallback;
   }
 
   static Future<Map<String, Map<String, String>>> _resolvePlayerNames(

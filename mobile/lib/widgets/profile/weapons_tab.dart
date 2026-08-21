@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../services/valorant_api_service.dart';
 import '../../theme/app_colors.dart';
 import '../shop/shop_shared.dart';
 import '../shop/skin_detail_modal.dart';
+
+enum ExplorerViewMode { detailed, compact, list }
 
 class WeaponsTab extends StatefulWidget {
   final Set<String> wishlist;
@@ -26,14 +29,15 @@ class _WeaponsTabState extends State<WeaponsTab> {
   final ScrollController _scrollController = ScrollController();
 
   String _searchQuery = '';
-  String _selectedCategory = 'ALL'; // 'ALL', '❤️ WISHLIST', 'OWNED', 'Rifles', 'Sidearms', 'Melee', 'Snipers', 'SMGs', 'Shotguns', 'Heavies'
-  String _selectedWeapon = 'ALL';   // Sub-weapon filter (e.g. 'Vandal', 'Phantom')
-  String _selectedTier = 'ALL';     // Tier filter ('Exclusive', 'Ultra', etc.)
+  String _selectedCategory = 'ALL'; 
+  String _selectedWeapon = 'ALL';   
+  String _selectedTier = 'ALL';     
+  ExplorerViewMode _viewMode = ExplorerViewMode.detailed;
 
   List<Map<String, dynamic>> _allCatalog = [];
   List<Map<String, dynamic>> _filteredList = [];
 
-  static const int _pageSize = 30;
+  static const int _pageSize = 36;
   int _visibleCount = _pageSize;
 
   static const List<String> _categories = [
@@ -51,7 +55,7 @@ class _WeaponsTabState extends State<WeaponsTab> {
   static const Map<String, List<String>> _categoryWeaponsMap = {
     'Rifles': ['ALL', 'Vandal', 'Phantom', 'Guardian', 'Bulldog'],
     'Sidearms': ['ALL', 'Sheriff', 'Ghost', 'Classic', 'Shorty', 'Frenzy'],
-    'Melee': ['ALL', 'Melee'],
+    'Melee': ['ALL', 'Karambit', 'Butterfly', 'Dagger', 'Sword', 'Axe', 'Scythe', 'Baton'],
     'Snipers': ['ALL', 'Operator', 'Outlaw', 'Marshal'],
     'SMGs': ['ALL', 'Spectre', 'Stinger'],
     'Shotguns': ['ALL', 'Bucky', 'Judge'],
@@ -112,6 +116,8 @@ class _WeaponsTabState extends State<WeaponsTab> {
       final uuid = (skin['uuid'] ?? '').toString();
       final skinCategory = (skin['category'] ?? '').toString();
       final skinWeapon = (skin['weaponName'] ?? skinCategory).toString();
+      final displayName = (skin['displayName'] as String? ?? '');
+      final lowerName = displayName.toLowerCase();
 
       if (cat == '❤️ WISHLIST') {
         if (!widget.wishlist.contains(uuid)) {
@@ -121,9 +127,38 @@ class _WeaponsTabState extends State<WeaponsTab> {
         return false;
       }
 
-      if (weapon != 'ALL' && skinWeapon != weapon) {
+      if (cat == 'Melee' && weapon != 'ALL') {
+        bool matchMeleeArchetype = false;
+        switch (weapon) {
+          case 'Karambit':
+            matchMeleeArchetype = lowerName.contains('karambit') || lowerName.contains('claw');
+            break;
+          case 'Butterfly':
+            matchMeleeArchetype = lowerName.contains('butterfly') || lowerName.contains('comb') || lowerName.contains('balisong');
+            break;
+          case 'Dagger':
+            matchMeleeArchetype = lowerName.contains('dagger') || lowerName.contains('knife') || lowerName.contains('blade') || lowerName.contains('kunai');
+            break;
+          case 'Sword':
+            matchMeleeArchetype = lowerName.contains('sword') || lowerName.contains('katana') || lowerName.contains('relic') || lowerName.contains('onimaru') || lowerName.contains('blade');
+            break;
+          case 'Axe':
+            matchMeleeArchetype = lowerName.contains('axe') || lowerName.contains('hatchet');
+            break;
+          case 'Scythe':
+            matchMeleeArchetype = lowerName.contains('scythe') || lowerName.contains('anchor');
+            break;
+          case 'Baton':
+            matchMeleeArchetype = lowerName.contains('baton') || lowerName.contains('hammer') || lowerName.contains('mace') || lowerName.contains('cudgel') || lowerName.contains('staff');
+            break;
+          default:
+            matchMeleeArchetype = lowerName.contains(weapon.toLowerCase());
+        }
+        if (!matchMeleeArchetype) return false;
+      } else if (weapon != 'ALL' && skinWeapon != weapon) {
         return false;
       }
+
       if (tier != 'all') {
         final tierName = (skin['tierName'] as String).toLowerCase();
         if (!tierName.contains(tier)) {
@@ -131,8 +166,7 @@ class _WeaponsTabState extends State<WeaponsTab> {
         }
       }
       if (query.isNotEmpty) {
-        final name = (skin['displayName'] as String).toLowerCase();
-        if (!name.contains(query)) {
+        if (!lowerName.contains(query)) {
           return false;
         }
       }
@@ -143,6 +177,7 @@ class _WeaponsTabState extends State<WeaponsTab> {
   }
 
   void _showTierFilterSheet() {
+    HapticFeedback.lightImpact();
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1B1B26),
@@ -202,6 +237,7 @@ class _WeaponsTabState extends State<WeaponsTab> {
                         selected: isSelected,
                         onSelected: (sel) {
                           if (sel) {
+                            HapticFeedback.selectionClick();
                             setSheetState(() => _selectedTier = tier);
                             setState(() => _applyFilters());
                             Navigator.pop(context);
@@ -235,7 +271,10 @@ class _WeaponsTabState extends State<WeaponsTab> {
   }) {
     final themeColor = activeColor ?? AppColors.primary;
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
@@ -259,6 +298,41 @@ class _WeaponsTabState extends State<WeaponsTab> {
     );
   }
 
+  void _cycleViewMode() {
+    HapticFeedback.lightImpact();
+    setState(() {
+      if (_viewMode == ExplorerViewMode.detailed) {
+        _viewMode = ExplorerViewMode.compact;
+      } else if (_viewMode == ExplorerViewMode.compact) {
+        _viewMode = ExplorerViewMode.list;
+      } else {
+        _viewMode = ExplorerViewMode.detailed;
+      }
+    });
+  }
+
+  IconData _getViewModeIcon() {
+    switch (_viewMode) {
+      case ExplorerViewMode.detailed:
+        return Icons.grid_view_rounded;
+      case ExplorerViewMode.compact:
+        return Icons.view_comfy_rounded;
+      case ExplorerViewMode.list:
+        return Icons.view_list_rounded;
+    }
+  }
+
+  String _getViewModeTooltip() {
+    switch (_viewMode) {
+      case ExplorerViewMode.detailed:
+        return 'Detailed Cards';
+      case ExplorerViewMode.compact:
+        return 'Compact Grid';
+      case ExplorerViewMode.list:
+        return 'List View';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final displayItems = _filteredList.take(_visibleCount).toList();
@@ -266,14 +340,12 @@ class _WeaponsTabState extends State<WeaponsTab> {
 
     return Column(
       children: [
-        // Fixed Sticky Header (Sleek Modern Design)
         Container(
           color: AppColors.background,
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Search Input + Edition Tier Button Row
               Row(
                 children: [
                   Expanded(
@@ -301,15 +373,14 @@ class _WeaponsTabState extends State<WeaponsTab> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
 
-                  // Tier Filter Button with Active Badge
                   InkWell(
                     onTap: _showTierFilterSheet,
                     borderRadius: BorderRadius.circular(12),
                     child: Container(
                       height: 42,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(
                         color: _selectedTier != 'ALL' ? AppColors.primary.withValues(alpha: 0.2) : AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
@@ -324,7 +395,7 @@ class _WeaponsTabState extends State<WeaponsTab> {
                             color: _selectedTier != 'ALL' ? AppColors.primary : Colors.white70,
                             size: 18,
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 4),
                           Text(
                             _selectedTier == 'ALL' ? 'Tier' : _selectedTier,
                             style: TextStyle(
@@ -337,12 +408,34 @@ class _WeaponsTabState extends State<WeaponsTab> {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+
+                  InkWell(
+                    onTap: _cycleViewMode,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Tooltip(
+                      message: _getViewModeTooltip(),
+                      child: Container(
+                        height: 42,
+                        width: 42,
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white12),
+                        ),
+                        child: Icon(
+                          _getViewModeIcon(),
+                          color: AppColors.primary,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
 
               const SizedBox(height: 12),
 
-              // Level 1: Primary Category Chips
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
@@ -365,7 +458,6 @@ class _WeaponsTabState extends State<WeaponsTab> {
                 ),
               ),
 
-              // Level 2: Sub-Weapon Chips (Only shown when a category is selected)
               if (subWeaponsList.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 SingleChildScrollView(
@@ -377,7 +469,7 @@ class _WeaponsTabState extends State<WeaponsTab> {
                         child: _buildFilterPill(
                           label: w,
                           isSelected: _selectedWeapon == w,
-                          activeColor: const Color(0xFFFFB74D), // Soft amber for sub-weapons
+                          activeColor: const Color(0xFFFFB74D),
                           onTap: () {
                             setState(() {
                               _selectedWeapon = w;
@@ -393,7 +485,6 @@ class _WeaponsTabState extends State<WeaponsTab> {
 
               const SizedBox(height: 12),
 
-              // Skins Count Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -409,6 +500,7 @@ class _WeaponsTabState extends State<WeaponsTab> {
                   if (widget.wishlist.isNotEmpty)
                     GestureDetector(
                       onTap: () {
+                        HapticFeedback.selectionClick();
                         setState(() {
                           _selectedCategory = _selectedCategory == '❤️ WISHLIST' ? 'ALL' : '❤️ WISHLIST';
                           _selectedWeapon = 'ALL';
@@ -432,7 +524,6 @@ class _WeaponsTabState extends State<WeaponsTab> {
 
         const Divider(color: Colors.white10, height: 1),
 
-        // Scrollable Skins Grid
         Expanded(
           child: _filteredList.isEmpty
               ? Padding(
@@ -441,176 +532,453 @@ class _WeaponsTabState extends State<WeaponsTab> {
                     child: Text(
                       _selectedCategory == '❤️ WISHLIST'
                           ? 'No wishlisted skins yet.\nTap the heart icon on any skin to add it to your wishlist!'
-                          : (_selectedCategory == 'OWNED'
-                              ? 'No owned skins found matching this filter.'
-                              : 'No skins match your filters.'),
+                          : 'No skins match your filters.',
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: Colors.white54, height: 1.4),
                     ),
                   ),
                 )
-              : GridView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(16),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    childAspectRatio: 1.25,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 10,
-                  ),
-                  itemCount: displayItems.length + (_visibleCount < _filteredList.length ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (index == displayItems.length) {
-                      return const Center(
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                      );
-                    }
+              : _buildSkinsView(displayItems),
+        ),
+      ],
+    );
+  }
 
-                    final skinData = displayItems[index];
-                    final uuid = skinData['uuid'] as String;
-                    final name = skinData['displayName'] as String;
-                    final icon = skinData['displayIcon'] as String;
-                    final tierName = skinData['tierName'] as String;
-                    final isLiked = widget.wishlist.contains(uuid);
-                    final isOwned = widget.ownedIndex?.containsUuid(uuid) == true ||
-                        widget.ownedIndex?.containsName(name) == true;
+  Widget _buildSkinsView(List<Map<String, dynamic>> displayItems) {
+    switch (_viewMode) {
+      case ExplorerViewMode.compact:
+        return _buildCompactGrid(displayItems);
+      case ExplorerViewMode.list:
+        return _buildListView(displayItems);
+      case ExplorerViewMode.detailed:
+        return _buildDetailedGrid(displayItems);
+    }
+  }
 
-                    final shortTier = tierName
-                        .replaceAll(RegExp(r'\s+edition', caseSensitive: false), '')
-                        .trim()
-                        .toUpperCase();
+  Widget _buildDetailedGrid(List<Map<String, dynamic>> displayItems) {
+    return GridView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 1.25,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+      ),
+      itemCount: displayItems.length + (_visibleCount < _filteredList.length ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index == displayItems.length) {
+          return const Center(
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+            ),
+          );
+        }
 
-                    return GestureDetector(
-                      onTap: () {
-                        final skinItem = ValorantApiService.resolveSkinItem(uuid, 0);
-                        SkinDetailModal.show(
-                          context,
-                          skinItem,
-                          isWishlisted: isLiked,
-                          isOwned: isOwned,
-                          onToggleWishlist: () => widget.onToggleWishlist?.call(uuid),
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isLiked
-                                ? AppColors.primary.withValues(alpha: 0.6)
-                                : (isOwned
-                                    ? AppColors.success.withValues(alpha: 0.3)
-                                    : Colors.white10),
-                            width: isLiked || isOwned ? 1.5 : 1,
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Flexible(
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white10,
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: Text(
-                                            shortTier,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      if (isOwned) ...[
-                                        const SizedBox(width: 4),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: AppColors.success.withValues(alpha: 0.2),
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: const Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(Icons.check, color: AppColors.success, size: 9),
-                                              SizedBox(width: 2),
-                                              Text(
-                                                'OWNED',
-                                                style: TextStyle(
-                                                  color: AppColors.success,
-                                                  fontSize: 8,
-                                                  fontWeight: FontWeight.w900,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
+        final skinData = displayItems[index];
+        final uuid = skinData['uuid'] as String;
+        final name = skinData['displayName'] as String;
+        final icon = skinData['displayIcon'] as String;
+        final tierName = skinData['tierName'] as String;
+        final isLiked = widget.wishlist.contains(uuid);
+        final isOwned = widget.ownedIndex?.containsUuid(uuid) == true ||
+            widget.ownedIndex?.containsName(name) == true;
+
+        final shortTier = tierName
+            .replaceAll(RegExp(r'\s+edition', caseSensitive: false), '')
+            .trim()
+            .toUpperCase();
+
+        return GestureDetector(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            final skinItem = ValorantApiService.resolveSkinItem(uuid, 0);
+            SkinDetailModal.show(
+              context,
+              skinItem,
+              isWishlisted: isLiked,
+              isOwned: isOwned,
+              onToggleWishlist: () {
+                HapticFeedback.lightImpact();
+                widget.onToggleWishlist?.call(uuid);
+              },
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isLiked
+                    ? AppColors.primary.withValues(alpha: 0.6)
+                    : (isOwned ? AppColors.success.withValues(alpha: 0.3) : Colors.white10),
+                width: isLiked || isOwned ? 1.5 : 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.white10,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                shortTier,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
                                 ),
-                                const SizedBox(width: 4),
-                                GestureDetector(
-                                  onTap: () => widget.onToggleWishlist?.call(uuid),
-                                  child: Icon(
-                                    isLiked ? Icons.favorite : Icons.favorite_border,
-                                    color: isLiked ? AppColors.primary : Colors.white38,
-                                    size: 18,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Expanded(
-                              child: Center(
-                                child: icon.isNotEmpty
-                                    ? CachedNetworkImage(
-                                        imageUrl: icon,
-                                        fit: BoxFit.contain,
-                                        memCacheWidth: 240,
-                                        errorWidget: (context, url, error) => const Icon(Icons.shield, color: Colors.white24, size: 36),
-                                      )
-                                    : const Icon(Icons.shield, color: Colors.white24, size: 36),
                               ),
                             ),
-                            const SizedBox(height: 6),
-                            Text(
-                              name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
+                          ),
+                          if (isOwned) ...[
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppColors.success.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.check, color: AppColors.success, size: 9),
+                                  SizedBox(width: 2),
+                                  Text(
+                                    'OWNED',
+                                    style: TextStyle(
+                                      color: AppColors.success,
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    GestureDetector(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        widget.onToggleWishlist?.call(uuid);
+                      },
+                      child: Icon(
+                        isLiked ? Icons.favorite : Icons.favorite_border,
+                        color: isLiked ? AppColors.primary : Colors.white38,
+                        size: 18,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Expanded(
+                  child: Center(
+                    child: icon.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: icon,
+                            fit: BoxFit.contain,
+                            memCacheWidth: 240,
+                            errorWidget: (context, url, error) => const Icon(Icons.shield, color: Colors.white24, size: 36),
+                          )
+                        : const Icon(Icons.shield, color: Colors.white24, size: 36),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCompactGrid(List<Map<String, dynamic>> displayItems) {
+    return GridView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.all(12),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        childAspectRatio: 0.88,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+      ),
+      itemCount: displayItems.length + (_visibleCount < _filteredList.length ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index == displayItems.length) {
+          return const Center(
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+            ),
+          );
+        }
+
+        final skinData = displayItems[index];
+        final uuid = skinData['uuid'] as String;
+        final name = skinData['displayName'] as String;
+        final icon = skinData['displayIcon'] as String;
+        final isLiked = widget.wishlist.contains(uuid);
+        final isOwned = widget.ownedIndex?.containsUuid(uuid) == true ||
+            widget.ownedIndex?.containsName(name) == true;
+
+        return GestureDetector(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            final skinItem = ValorantApiService.resolveSkinItem(uuid, 0);
+            SkinDetailModal.show(
+              context,
+              skinItem,
+              isWishlisted: isLiked,
+              isOwned: isOwned,
+              onToggleWishlist: () {
+                HapticFeedback.lightImpact();
+                widget.onToggleWishlist?.call(uuid);
+              },
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isLiked
+                    ? AppColors.primary.withValues(alpha: 0.7)
+                    : (isOwned ? AppColors.success.withValues(alpha: 0.35) : Colors.white10),
+                width: isLiked || isOwned ? 1.5 : 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    if (isOwned)
+                      const Icon(Icons.check_circle, color: AppColors.success, size: 12)
+                    else
+                      const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        widget.onToggleWishlist?.call(uuid);
+                      },
+                      child: Icon(
+                        isLiked ? Icons.favorite : Icons.favorite_border,
+                        color: isLiked ? AppColors.primary : Colors.white24,
+                        size: 14,
+                      ),
+                    ),
+                  ],
+                ),
+                Expanded(
+                  child: Center(
+                    child: icon.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: icon,
+                            fit: BoxFit.contain,
+                            memCacheWidth: 160,
+                            errorWidget: (context, url, error) => const Icon(Icons.shield, color: Colors.white24, size: 24),
+                          )
+                        : const Icon(Icons.shield, color: Colors.white24, size: 24),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildListView(List<Map<String, dynamic>> displayItems) {
+    return ListView.separated(
+      controller: _scrollController,
+      padding: const EdgeInsets.all(16),
+      itemCount: displayItems.length + (_visibleCount < _filteredList.length ? 1 : 0),
+      separatorBuilder: (context, index) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        if (index == displayItems.length) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(12.0),
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+              ),
+            ),
+          );
+        }
+
+        final skinData = displayItems[index];
+        final uuid = skinData['uuid'] as String;
+        final name = skinData['displayName'] as String;
+        final icon = skinData['displayIcon'] as String;
+        final tierName = skinData['tierName'] as String;
+        final isLiked = widget.wishlist.contains(uuid);
+        final isOwned = widget.ownedIndex?.containsUuid(uuid) == true ||
+            widget.ownedIndex?.containsName(name) == true;
+
+        final shortTier = tierName
+            .replaceAll(RegExp(r'\s+edition', caseSensitive: false), '')
+            .trim()
+            .toUpperCase();
+
+        return GestureDetector(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            final skinItem = ValorantApiService.resolveSkinItem(uuid, 0);
+            SkinDetailModal.show(
+              context,
+              skinItem,
+              isWishlisted: isLiked,
+              isOwned: isOwned,
+              onToggleWishlist: () {
+                HapticFeedback.lightImpact();
+                widget.onToggleWishlist?.call(uuid);
+              },
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isLiked
+                    ? AppColors.primary.withValues(alpha: 0.6)
+                    : (isOwned ? AppColors.success.withValues(alpha: 0.3) : Colors.white10),
+                width: isLiked || isOwned ? 1.5 : 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 44,
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: icon.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: icon,
+                          fit: BoxFit.contain,
+                          memCacheWidth: 120,
+                          errorWidget: (context, url, error) => const Icon(Icons.shield, color: Colors.white24, size: 24),
+                        )
+                      : const Icon(Icons.shield, color: Colors.white24, size: 24),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
                         ),
                       ),
-                    );
-                  },
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: Colors.white10,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              shortTier,
+                              style: const TextStyle(color: Colors.white60, fontSize: 8.5, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          if (isOwned) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: AppColors.success.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'OWNED',
+                                style: TextStyle(color: AppColors.success, fontSize: 8.5, fontWeight: FontWeight.w900),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-        ),
-      ],
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    widget.onToggleWishlist?.call(uuid);
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(6.0),
+                    child: Icon(
+                      isLiked ? Icons.favorite : Icons.favorite_border,
+                      color: isLiked ? AppColors.primary : Colors.white38,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

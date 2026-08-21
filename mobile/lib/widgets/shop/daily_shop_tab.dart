@@ -24,6 +24,8 @@ class DailyShopTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final wishlistedInShop = skins.where((s) => wishlist.contains(s.uuid)).toList();
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -39,6 +41,56 @@ class DailyShopTab extends StatelessWidget {
             ),
           )
         else ...[
+          if (wishlistedInShop.isNotEmpty) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.primary.withValues(alpha: 0.25),
+                    Colors.purple.withValues(alpha: 0.15),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.5)),
+              ),
+              child: Row(
+                children: [
+                  const Text('🎉', style: TextStyle(fontSize: 18)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'WISHLIST ALERT!',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 11,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          wishlistedInShop.length == 1
+                              ? '${wishlistedInShop.first.displayName} is in your daily shop!'
+                              : '${wishlistedInShop.length} wishlisted items are available today!',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.favorite, color: AppColors.primary, size: 18),
+                ],
+              ),
+            ),
+          ],
           CountdownRow(label: 'TIME LEFT:', value: FormatUtils.formatTimer(remainingSeconds)),
           const SizedBox(height: 16),
           GridView.builder(

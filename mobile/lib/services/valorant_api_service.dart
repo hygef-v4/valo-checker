@@ -20,6 +20,7 @@ class ValorantApiService {
   static final Map<String, Map<String, String>> _weaponsCache = {};
   static final Map<String, Map<String, String>> _skinToWeaponMap = {};
   static final Map<String, dynamic> _missionsCache = {};
+  static final Map<String, dynamic> _seasonsCache = {};
   static bool _isLoaded = false;
 
   static Future<void> loadMetadataCache() async {
@@ -41,6 +42,7 @@ class ValorantApiService {
         RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/weapons')),
         RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/missions')),
         RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/buddies')),
+        RiotApiClient.get(Uri.parse('https://valorant-api.com/v1/seasons')),
       ]);
 
       void populate(http.Response res, Map<String, dynamic> targetMap) {
@@ -58,6 +60,7 @@ class ValorantApiService {
       populate(responses[3], _spraysCache);
       populate(responses[4], _playerCardsCache);
       populate(responses[5], _buddiesCache);
+      populate(responses[14], _seasonsCache);
       populate(responses[6], _playerTitlesCache);
 
       // Populate Buddies (both buddy UUID and buddy level UUIDs)
@@ -242,6 +245,28 @@ class ValorantApiService {
     return {
       'displayName': 'Weapon',
       'displayIcon': '',
+    };
+  }
+
+  static Map<String, String> resolveSeason(String seasonUuid) {
+    final key = seasonUuid.toLowerCase();
+    if (_seasonsCache.containsKey(key)) {
+      final s = _seasonsCache[key];
+      final name = (s['displayName'] ?? '').toString();
+      final parentUuid = (s['parentUuid'] ?? '').toString().toLowerCase();
+      String parentName = '';
+      if (parentUuid.isNotEmpty && _seasonsCache.containsKey(parentUuid)) {
+        parentName = (_seasonsCache[parentUuid]?['displayName'] ?? '').toString();
+      }
+      final fullName = parentName.isNotEmpty ? '$parentName: $name' : name;
+      return {
+        'displayName': fullName.isNotEmpty ? fullName : 'Season',
+        'shortName': name.isNotEmpty ? name : 'Season',
+      };
+    }
+    return {
+      'displayName': 'Current Season',
+      'shortName': 'Season',
     };
   }
 

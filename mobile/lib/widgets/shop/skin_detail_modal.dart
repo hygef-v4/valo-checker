@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../models/skin_item.dart';
@@ -49,6 +50,8 @@ class _SkinDetailModalState extends State<SkinDetailModal> {
   late String _currentIcon;
   late String _currentVideo;
   late bool _isWishlisted;
+  int _selectedLevelIndex = 0;
+  int _selectedChromaIndex = 0;
 
   @override
   void initState() {
@@ -226,16 +229,21 @@ class _SkinDetailModalState extends State<SkinDetailModal> {
                     final icon = (c['swatch'] ?? c['displayIcon'] ?? c['fullRender'] ?? '').toString();
                     final vid = (c['streamedVideo'] ?? skin.videoUrl).toString();
                     final cImage = (c['fullRender'] ?? c['displayIcon'] ?? skin.displayIcon).toString();
-                    final isSelected = cImage == _currentIcon;
+                    final isSelected = index == _selectedChromaIndex || cImage == _currentIcon;
 
                     return GestureDetector(
                       onTap: () {
+                        HapticFeedback.selectionClick();
                         setState(() {
+                          _selectedChromaIndex = index;
                           _currentIcon = cImage;
-                          _currentVideo = vid;
+                          if (vid.isNotEmpty) {
+                            _currentVideo = vid;
+                          }
                         });
                       },
-                      child: Container(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
@@ -280,25 +288,40 @@ class _SkinDetailModalState extends State<SkinDetailModal> {
                     final l = levels[index];
                     final lvlName = (l['displayName'] ?? 'Level ${index + 1}').toString();
                     final vid = (l['streamedVideo'] ?? _currentVideo).toString();
+                    final isSelected = index == _selectedLevelIndex;
 
                     return GestureDetector(
                       onTap: () {
-                        if (vid.isNotEmpty) {
-                          setState(() {
+                        HapticFeedback.selectionClick();
+                        setState(() {
+                          _selectedLevelIndex = index;
+                          if (vid.isNotEmpty) {
                             _currentVideo = vid;
-                          });
-                        }
+                          }
+                          final lvlIcon = (l['displayIcon'] ?? '').toString();
+                          if (lvlIcon.isNotEmpty) {
+                            _currentIcon = lvlIcon;
+                          }
+                        });
                       },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.08),
+                          color: isSelected ? const Color(0xFFFF4655).withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: Colors.white10),
+                          border: Border.all(
+                            color: isSelected ? const Color(0xFFFF4655) : Colors.white10,
+                            width: isSelected ? 1.5 : 1.0,
+                          ),
                         ),
                         child: Text(
                           lvlName,
-                          style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : Colors.white70,
+                            fontSize: 11,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                          ),
                         ),
                       ),
                     );
