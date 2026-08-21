@@ -69,10 +69,46 @@ class OwnedSkinIndex {
   final Set<String> parentNames;
 
   OwnedSkinIndex.fromInventory(List<SkinItem> inventory)
-      : uuids = inventory.map((s) => s.uuid).toSet(),
-        parentNames = inventory.map((s) => s.parentName).where((n) => n.isNotEmpty).toSet();
+      : uuids = inventory
+            .expand((s) => [
+                  s.uuid.toLowerCase(),
+                  if (s.cleanName.isNotEmpty) s.cleanName.toLowerCase(),
+                ])
+            .where((u) => u.isNotEmpty)
+            .toSet(),
+        parentNames = inventory
+            .expand((s) => [
+                  s.parentName.toLowerCase().trim(),
+                  s.displayName.toLowerCase().trim(),
+                  if (s.cleanName.isNotEmpty) s.cleanName.toLowerCase().trim(),
+                ])
+            .where((n) => n.isNotEmpty)
+            .toSet();
 
   bool contains(SkinItem skin) {
-    return uuids.contains(skin.uuid) || (skin.parentName.isNotEmpty && parentNames.contains(skin.parentName));
+    final u = skin.uuid.toLowerCase();
+    final p = skin.parentName.toLowerCase().trim();
+    final d = skin.displayName.toLowerCase().trim();
+    final c = skin.cleanName.toLowerCase().trim();
+
+    return uuids.contains(u) ||
+        (p.isNotEmpty && parentNames.contains(p)) ||
+        (d.isNotEmpty && parentNames.contains(d)) ||
+        (c.isNotEmpty && parentNames.contains(c));
+  }
+
+  bool containsUuid(String uuid) {
+    if (uuid.isEmpty) return false;
+    return uuids.contains(uuid.toLowerCase());
+  }
+
+  bool containsName(String name) {
+    if (name.isEmpty) return false;
+    final lower = name.toLowerCase().trim();
+    final clean = lower
+        .replaceAll(RegExp(r'\s+level\s+\d+.*$', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s+variant\s+\d+.*$', caseSensitive: false), '')
+        .trim();
+    return parentNames.contains(lower) || parentNames.contains(clean);
   }
 }

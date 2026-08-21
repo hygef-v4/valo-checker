@@ -7,12 +7,14 @@ import '../../services/valorant_api_service.dart';
 class SkinDetailModal extends StatefulWidget {
   final SkinItem skin;
   final bool isWishlisted;
+  final bool isOwned;
   final VoidCallback? onToggleWishlist;
 
   const SkinDetailModal({
     super.key,
     required this.skin,
     this.isWishlisted = false,
+    this.isOwned = false,
     this.onToggleWishlist,
   });
 
@@ -20,6 +22,7 @@ class SkinDetailModal extends StatefulWidget {
     BuildContext context,
     SkinItem skin, {
     bool isWishlisted = false,
+    bool isOwned = false,
     VoidCallback? onToggleWishlist,
   }) {
     showModalBottomSheet(
@@ -32,6 +35,7 @@ class SkinDetailModal extends StatefulWidget {
       builder: (context) => SkinDetailModal(
         skin: skin,
         isWishlisted: isWishlisted,
+        isOwned: isOwned,
         onToggleWishlist: onToggleWishlist,
       ),
     );
@@ -304,27 +308,78 @@ class _SkinDetailModalState extends State<SkinDetailModal> {
               const SizedBox(height: 16),
             ],
 
-            // Price Pill
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CachedNetworkImage(
-                  imageUrl: 'https://media.valorant-api.com/currencies/85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741/displayicon.png',
-                  width: 18,
-                  height: 18,
-                  errorWidget: (context, url, error) => const Icon(Icons.monetization_on_outlined, color: Colors.white70, size: 16),
+            // Price / Ownership Pill
+            if (widget.isOwned)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF34D399).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.4)),
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  skin.cost > 0 ? '${skin.cost} VP' : 'OWNED',
-                  style: TextStyle(
-                    color: skin.cost > 0 ? Colors.white : const Color(0xFF34D399),
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check_circle_rounded, color: Color(0xFF34D399), size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      'OWNED',
+                      style: TextStyle(
+                        color: Color(0xFF34D399),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 15,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else if (skin.cost > 0)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CachedNetworkImage(
+                    imageUrl: 'https://media.valorant-api.com/currencies/85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741/displayicon.png',
+                    width: 18,
+                    height: 18,
+                    errorWidget: (context, url, error) => const Icon(Icons.monetization_on_outlined, color: Colors.white70, size: 16),
                   ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${skin.cost} VP',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 18,
+                    ),
+                  ),
+                ],
+              )
+            else
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white12),
                 ),
-              ],
-            ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.lock_outline_rounded, color: Colors.white54, size: 16),
+                    SizedBox(width: 6),
+                    Text(
+                      'NOT OWNED',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 16),
 
             // Watch Demo Video Button

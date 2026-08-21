@@ -3,15 +3,18 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../services/valorant_api_service.dart';
 import '../../theme/app_colors.dart';
+import '../shop/shop_shared.dart';
 import '../shop/skin_detail_modal.dart';
 
 class WeaponsTab extends StatefulWidget {
   final Set<String> wishlist;
+  final OwnedSkinIndex? ownedIndex;
   final Function(String skinUuid)? onToggleWishlist;
 
   const WeaponsTab({
     super.key,
     this.wishlist = const {},
+    this.ownedIndex,
     this.onToggleWishlist,
   });
 
@@ -23,7 +26,7 @@ class _WeaponsTabState extends State<WeaponsTab> {
   final ScrollController _scrollController = ScrollController();
 
   String _searchQuery = '';
-  String _selectedCategory = 'ALL'; // 'ALL', 'Rifles', 'Sidearms', 'Melee', 'Snipers', 'SMGs', 'Shotguns', 'Heavies'
+  String _selectedCategory = 'ALL'; // 'ALL', '❤️ WISHLIST', 'OWNED', 'Rifles', 'Sidearms', 'Melee', 'Snipers', 'SMGs', 'Shotguns', 'Heavies'
   String _selectedWeapon = 'ALL';   // Sub-weapon filter (e.g. 'Vandal', 'Phantom')
   String _selectedTier = 'ALL';     // Tier filter ('Exclusive', 'Ultra', etc.)
 
@@ -75,7 +78,7 @@ class _WeaponsTabState extends State<WeaponsTab> {
   @override
   void didUpdateWidget(covariant WeaponsTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.wishlist != widget.wishlist) {
+    if (oldWidget.wishlist != widget.wishlist || oldWidget.ownedIndex != widget.ownedIndex) {
       setState(() {
         _applyFilters();
       });
@@ -407,7 +410,7 @@ class _WeaponsTabState extends State<WeaponsTab> {
                     GestureDetector(
                       onTap: () {
                         setState(() {
-                          _selectedCategory = '❤️ WISHLIST';
+                          _selectedCategory = _selectedCategory == '❤️ WISHLIST' ? 'ALL' : '❤️ WISHLIST';
                           _selectedWeapon = 'ALL';
                           _applyFilters();
                         });
@@ -438,7 +441,9 @@ class _WeaponsTabState extends State<WeaponsTab> {
                     child: Text(
                       _selectedCategory == '❤️ WISHLIST'
                           ? 'No wishlisted skins yet.\nTap the heart icon on any skin to add it to your wishlist!'
-                          : 'No skins match your filters.',
+                          : (_selectedCategory == 'OWNED'
+                              ? 'No owned skins found matching this filter.'
+                              : 'No skins match your filters.'),
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: Colors.white54, height: 1.4),
                     ),
@@ -474,6 +479,13 @@ class _WeaponsTabState extends State<WeaponsTab> {
                     final icon = skinData['displayIcon'] as String;
                     final tierName = skinData['tierName'] as String;
                     final isLiked = widget.wishlist.contains(uuid);
+                    final isOwned = widget.ownedIndex?.containsUuid(uuid) == true ||
+                        widget.ownedIndex?.containsName(name) == true;
+
+                    final shortTier = tierName
+                        .replaceAll(RegExp(r'\s+edition', caseSensitive: false), '')
+                        .trim()
+                        .toUpperCase();
 
                     return GestureDetector(
                       onTap: () {
@@ -482,6 +494,7 @@ class _WeaponsTabState extends State<WeaponsTab> {
                           context,
                           skinItem,
                           isWishlisted: isLiked,
+                          isOwned: isOwned,
                           onToggleWishlist: () => widget.onToggleWishlist?.call(uuid),
                         );
                       },
@@ -491,37 +504,77 @@ class _WeaponsTabState extends State<WeaponsTab> {
                           color: AppColors.surface,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: isLiked ? AppColors.primary.withValues(alpha: 0.6) : Colors.white10,
-                            width: isLiked ? 1.5 : 1,
+                            color: isLiked
+                                ? AppColors.primary.withValues(alpha: 0.6)
+                                : (isOwned
+                                    ? AppColors.success.withValues(alpha: 0.3)
+                                    : Colors.white10),
+                            width: isLiked || isOwned ? 1.5 : 1,
                           ),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white10,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    tierName.toUpperCase(),
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                Expanded(
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Flexible(
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white10,
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            shortTier,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      if (isOwned) ...[
+                                        const SizedBox(width: 4),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.success.withValues(alpha: 0.2),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: const Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.check, color: AppColors.success, size: 9),
+                                              SizedBox(width: 2),
+                                              Text(
+                                                'OWNED',
+                                                style: TextStyle(
+                                                  color: AppColors.success,
+                                                  fontSize: 8,
+                                                  fontWeight: FontWeight.w900,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ],
                                   ),
                                 ),
+                                const SizedBox(width: 4),
                                 GestureDetector(
                                   onTap: () => widget.onToggleWishlist?.call(uuid),
                                   child: Icon(
                                     isLiked ? Icons.favorite : Icons.favorite_border,
                                     color: isLiked ? AppColors.primary : Colors.white38,
-                                    size: 20,
+                                    size: 18,
                                   ),
                                 ),
                               ],

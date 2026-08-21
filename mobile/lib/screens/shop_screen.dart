@@ -380,10 +380,12 @@ class _ShopScreenState extends State<ShopScreen> {
 
   void _showSkinDetailModal(SkinItem skin) {
     final isLiked = _wishlist.contains(skin.uuid);
+    final isOwned = _ownedIndex.contains(skin);
     SkinDetailModal.show(
       context,
       skin,
       isWishlisted: isLiked,
+      isOwned: isOwned,
       onToggleWishlist: () => _handleToggleWishlist(skin.uuid),
     );
   }
@@ -682,6 +684,7 @@ class _ShopScreenState extends State<ShopScreen> {
       default:
         content = WeaponsTab(
           wishlist: _wishlist,
+          ownedIndex: _ownedIndex,
           onToggleWishlist: _handleToggleWishlist,
         );
     }

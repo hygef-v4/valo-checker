@@ -184,7 +184,7 @@ class BundleDetailModal extends StatelessWidget {
   }
 
   Widget _buildBundleItemRow(BuildContext context, SkinItem item) {
-    final isOwned = ownedIndex.contains(item) || (item.cost == 0);
+    final isOwned = ownedIndex.contains(item);
 
     return InkWell(
       onTap: onSkinTap != null ? () => onSkinTap!(item) : null,
